@@ -164,8 +164,17 @@
         </div>
 
         <div class="card">
-            <h3>Teacher Review Matrix</h3>
-            <p style="font-size: 0.9rem; margin-top: 5px;">Legend: 
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:10px;">
+                <h3>Teacher Review Matrix</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <label style="font-weight:bold; font-size:0.9rem;">Filter by Course:</label>
+                    <select id="teacherCourseFilter" onchange="renderTeacherView()" style="width:auto; margin:0; padding:6px 12px;">
+                        <option value="ALL">All Courses</option>
+                    </select>
+                </div>
+            </div>
+            
+            <p style="font-size: 0.9rem; margin-top: 5px; margin-bottom:15px;">Legend: 
                 <span style="background:var(--pending); padding:2px 6px; border-radius:4px;">Yellow</span> = Ready for Review | 
                 <span style="background:var(--approved); padding:2px 6px; border-radius:4px;">Green ✔</span> = Signed Off | 
                 <span style="background:var(--revision); padding:2px 6px; border-radius:4px;">Red ⚠️</span> = Revision Requested
@@ -272,6 +281,20 @@
                     approved: false,
                     needsRevision: false,
                     feedback: ""
+                }))
+            },
+            {
+                id: "p2",
+                studentId: "s2",
+                studentName: "Lee, Alex",
+                course: "Algebra 101",
+                teacher: "Mr. Smith",
+                units: Array.from({ length: 16 }, (_, i) => ({
+                    unitNum: i + 1,
+                    reflection: i === 0 ? "Understood key concepts quickly." : "",
+                    approved: true,
+                    needsRevision: false,
+                    feedback: "Great job!"
                 }))
             }
         ]
@@ -500,7 +523,7 @@
         }
     }
 
-    // TEACHER SELF SERVICE FUNCTIONS
+    // TEACHER SELF SERVICE & MATRIX FUNCTIONS
     function updateTeacherPassword() {
         const newPass = document.getElementById('teacherNewPassword').value.trim();
         if (!newPass) {
@@ -517,6 +540,124 @@
             alert('Your password has been updated successfully!');
             document.getElementById('teacherNewPassword').value = '';
         }
+    }
+
+    function updateTeacherCourseFilterOptions(myPassports) {
+        const select = document.getElementById('teacherCourseFilter');
+        const currentValue = select.value || "ALL";
+        
+        // Dynamic set of courses taught by this specific teacher
+        const courses = [...new Set(myPassports.map(p => p.course))].sort();
+        
+        let optionsHtml = '<option value="ALL">All Courses</option>';
+        courses.forEach(c => {
+            const isSelected = c === currentValue ? 'selected' : '';
+            optionsHtml += `<option value="${c}" ${isSelected}>${c}</option>`;
+        });
+        select.innerHTML = optionsHtml;
+    }
+
+    function renderTeacherView() {
+        const db = loadData();
+        const headerTr = document.getElementById('teacherTableHeader');
+        const body = document.getElementById('teacherTableBody');
+
+        let headerHtml = '<th>Student</th><th>Course</th>';
+        for(let i = 1; i <= 16; i++) {
+            headerHtml += `<th>U${i}</th>`;
+        }
+        headerTr.innerHTML = headerHtml;
+
+        // Get current teacher's assigned passports
+        const allTeacherPassports = db.passports.filter(p => p.teacher === currentUser.name);
+
+        // Populate and synchronize course filter options
+        updateTeacherCourseFilterOptions(allTeacherPassports);
+
+        // Filter passports based on selected course option
+        const selectedCourse = document.getElementById('teacherCourseFilter').value;
+        let displayedPassports = [...allTeacherPassports];
+        if (selectedCourse && selectedCourse !== 'ALL') {
+            displayedPassports = displayedPassports.filter(p => p.course === selectedCourse);
+        }
+
+        // Always sort students alphabetically by name ("LastName, FirstName")
+        displayedPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+        if(displayedPassports.length === 0) {
+            body.innerHTML = `<tr><td colspan="18">No student passports found for this filter.</td></tr>`;
+            return;
+        }
+
+        body.innerHTML = displayedPassports.map(p => {
+            let rowHtml = `<tr>
+                <td style="font-weight:bold; text-align:left;">${p.studentName}</td>
+                <td>${p.course}</td>`;
+
+            p.units.forEach((u, idx) => {
+                let cellClass = 'cell-empty';
+                let cellContent = '-';
+
+                if (u.approved) {
+                    cellClass = 'cell-approved';
+                    cellContent = '✔';
+                } else if (u.needsRevision) {
+                    cellClass = 'cell-revision';
+                    cellContent = 'Rev';
+                } else if (u.reflection && u.reflection.trim() !== '') {
+                    cellClass = 'cell-pending';
+                    cellContent = 'Review';
+                }
+
+                rowHtml += `<td class="${cellClass}" onclick="openTeacherReview('${p.id}', ${idx})">${cellContent}</td>`;
+            });
+
+            rowHtml += `</tr>`;
+            return rowHtml;
+        }).join('');
+    }
+
+    function openTeacherReview(passportId, unitIndex) {
+        const db = loadData();
+        const passport = db.passports.find(p => p.id === passportId);
+        const unit = passport.units[unitIndex];
+
+        if (!unit.reflection && !unit.approved && !unit.needsRevision) {
+            alert('Student has not submitted a reflection for this unit yet.');
+            return;
+        }
+
+        activePassportId = passportId;
+        activeUnitIndex = unitIndex;
+
+        document.getElementById('reviewStudentName').innerText = passport.studentName;
+        document.getElementById('reviewCourseName').innerText = passport.course;
+        document.getElementById('reviewUnitNum').innerText = unit.unitNum;
+        document.getElementById('reviewText').innerText = unit.reflection || "(No reflection text)";
+        document.getElementById('teacherFeedback').value = unit.feedback || "";
+
+        openModal('teacherReviewModal');
+    }
+
+    function saveTeacherReview(approve) {
+        const db = loadData();
+        const passport = db.passports.find(p => p.id === activePassportId);
+        const unit = passport.units[activeUnitIndex];
+        const feedbackText = document.getElementById('teacherFeedback').value.trim();
+
+        if (approve) {
+            unit.approved = true;
+            unit.needsRevision = false;
+            unit.feedback = feedbackText;
+        } else {
+            unit.approved = false;
+            unit.needsRevision = true;
+            unit.feedback = feedbackText;
+        }
+
+        saveData(db);
+        closeModal('teacherReviewModal');
+        renderTeacherView();
     }
 
     // STUDENT FUNCTIONS
@@ -613,96 +754,6 @@
         alert('Reflection saved and submitted for teacher review!');
         renderStudentView();
         openPassportModal(activePassportId);
-    }
-
-    // TEACHER FUNCTIONS
-    function renderTeacherView() {
-        const db = loadData();
-        const headerTr = document.getElementById('teacherTableHeader');
-        const body = document.getElementById('teacherTableBody');
-
-        let headerHtml = '<th>Student</th><th>Course</th>';
-        for(let i = 1; i <= 16; i++) {
-            headerHtml += `<th>U${i}</th>`;
-        }
-        headerTr.innerHTML = headerHtml;
-
-        const myPassports = db.passports.filter(p => p.teacher === currentUser.name);
-
-        if(myPassports.length === 0) {
-            body.innerHTML = `<tr><td colspan="18">No student passports assigned yet.</td></tr>`;
-            return;
-        }
-
-        body.innerHTML = myPassports.map(p => {
-            let rowHtml = `<tr>
-                <td style="font-weight:bold; text-align:left;">${p.studentName}</td>
-                <td>${p.course}</td>`;
-
-            p.units.forEach((u, idx) => {
-                let cellClass = 'cell-empty';
-                let cellContent = '-';
-
-                if (u.approved) {
-                    cellClass = 'cell-approved';
-                    cellContent = '✔';
-                } else if (u.needsRevision) {
-                    cellClass = 'cell-revision';
-                    cellContent = 'Rev';
-                } else if (u.reflection && u.reflection.trim() !== '') {
-                    cellClass = 'cell-pending';
-                    cellContent = 'Review';
-                }
-
-                rowHtml += `<td class="${cellClass}" onclick="openTeacherReview('${p.id}', ${idx})">${cellContent}</td>`;
-            });
-
-            rowHtml += `</tr>`;
-            return rowHtml;
-        }).join('');
-    }
-
-    function openTeacherReview(passportId, unitIndex) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        const unit = passport.units[unitIndex];
-
-        if (!unit.reflection && !unit.approved && !unit.needsRevision) {
-            alert('Student has not submitted a reflection for this unit yet.');
-            return;
-        }
-
-        activePassportId = passportId;
-        activeUnitIndex = unitIndex;
-
-        document.getElementById('reviewStudentName').innerText = passport.studentName;
-        document.getElementById('reviewCourseName').innerText = passport.course;
-        document.getElementById('reviewUnitNum').innerText = unit.unitNum;
-        document.getElementById('reviewText').innerText = unit.reflection || "(No reflection text)";
-        document.getElementById('teacherFeedback').value = unit.feedback || "";
-
-        openModal('teacherReviewModal');
-    }
-
-    function saveTeacherReview(approve) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === activePassportId);
-        const unit = passport.units[activeUnitIndex];
-        const feedbackText = document.getElementById('teacherFeedback').value.trim();
-
-        if (approve) {
-            unit.approved = true;
-            unit.needsRevision = false;
-            unit.feedback = feedbackText;
-        } else {
-            unit.approved = false;
-            unit.needsRevision = true;
-            unit.feedback = feedbackText;
-        }
-
-        saveData(db);
-        closeModal('teacherReviewModal');
-        renderTeacherView();
     }
 
     // MODAL UTILITIES
