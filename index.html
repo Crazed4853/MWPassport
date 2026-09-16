@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Course Passport System</title>
+    <title>Course Attendance and Participation Passport Portal</title>
     <style>
         :root {
-            --primary: #2563eb;
-            --primary-hover: #1d4ed8;
+            --primary: #1e2b58; /* Mary Ward Crest Navy Blue */
+            --primary-hover: #131d3d;
+            --accent-red: #9a1c2d; /* Mary Ward Crest Crimson */
+            --accent-red-hover: #7a1422;
             --bg: #f8fafc;
             --card-bg: #ffffff;
             --text: #0f172a;
@@ -23,28 +25,34 @@
         body { background-color: var(--bg); color: var(--text); padding: 20px; }
         
         .container { max-width: 1200px; margin: 0 auto; }
-        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 3px solid var(--primary); margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
         
-        .card { background: var(--card-bg); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+        .header-brand { display: flex; align-items: center; gap: 15px; }
+        .header-logo { height: 55px; width: auto; }
+        .header-title { color: var(--primary); font-size: 1.4rem; font-weight: 700; }
+
+        .card { background: var(--card-bg); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; border-top: 4px solid var(--primary); }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: background 0.2s; }
         .btn:hover { background: var(--primary-hover); }
         .btn-secondary { background: #64748b; color: white; }
         .btn-secondary:hover { background: #475569; }
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-danger:hover { background: #dc2626; }
+        .btn-danger { background: var(--accent-red); color: white; }
+        .btn-danger:hover { background: var(--accent-red-hover); }
         .btn-success { background: #16a34a; color: white; }
         .btn-success:hover { background: #15803d; }
 
         input, select, textarea { width: 100%; padding: 10px; margin: 8px 0 16px; border: 1px solid var(--border); border-radius: 6px; }
         
         /* Login */
-        .login-card { max-width: 400px; margin: 80px auto; }
+        .login-card { max-width: 420px; margin: 60px auto; border-top: 5px solid var(--accent-red); }
+        .login-header { text-align: center; margin-bottom: 20px; }
+        .login-logo { height: 90px; width: auto; margin-bottom: 12px; }
 
         /* Tables */
         .table-container { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         th, td { border: 1px solid var(--border); padding: 8px; text-align: center; font-size: 0.9rem; }
-        th { background: #f1f5f9; }
+        th { background: #f1f5f9; color: var(--primary); }
 
         /* Lists */
         .item-list { list-style: none; padding: 0; margin-top: 15px; }
@@ -58,14 +66,14 @@
 
         /* Grid for Student View */
         .passport-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-        .passport-card { border: 2px solid var(--primary); border-radius: 8px; padding: 16px; background: white; cursor: pointer; transition: transform 0.2s; }
-        .passport-card:hover { transform: translateY(-4px); }
+        .passport-card { border: 2px solid var(--primary); border-radius: 8px; padding: 16px; background: white; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+        .passport-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
 
         /* Modal */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
-        .modal-content { background: white; padding: 24px; border-radius: 8px; max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto; }
+        .modal-content { background: white; padding: 24px; border-radius: 8px; max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto; border-top: 5px solid var(--primary); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        .close-btn { cursor: pointer; font-size: 1.5rem; font-weight: bold; }
+        .close-btn { cursor: pointer; font-size: 1.5rem; font-weight: bold; color: var(--primary); }
 
         .unit-item { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
         .unit-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; }
@@ -79,29 +87,39 @@
 
 <div class="container">
     <header>
-        <h2>Course Passport System</h2>
+        <div class="header-brand">
+            <img src="MWCSS_Logo.svg" alt="Mary Ward Catholic Secondary School Logo" class="header-logo" onerror="this.style.display='none'">
+            <h2 class="header-title">Course Attendance and Participation Passport Portal</h2>
+        </div>
         <div id="userInfo" style="display:none;">
-            <span id="userGreeting" style="margin-right: 15px;"></span>
+            <span id="userGreeting" style="margin-right: 15px; font-weight:600; color:var(--primary);"></span>
             <button class="btn btn-danger" onclick="logout()">Logout</button>
         </div>
     </header>
 
     <!-- LOGIN SCREEN -->
     <div id="loginView" class="card login-card">
-        <h3>Portal Login</h3>
-        <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px;">Admin: <b>admin / admin</b><br>Teacher: <b>Smith / teacher123</b><br>Student: <b>Doe / 2345</b></p>
+        <div class="login-header">
+            <img src="MWCSS_Logo.svg" alt="Mary Ward Logo" class="login-logo" onerror="this.style.display='none'">
+            <h3 style="color:var(--primary);">Portal Login</h3>
+            <p style="font-size:0.8rem; color:#64748b; margin-top:4px;">Course Attendance and Participation Passport Portal</p>
+        </div>
+        <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px; background:#f1f5f9; padding:8px; border-radius:4px;">
+            Admin: <b>admin / admin</b><br>
+            Teacher: <b>Smith / teacher123</b><br>
+            Student: <b>Doe / 2345</b>
+        </p>
         <label>Username (Last Name)</label>
         <input type="text" id="username" placeholder="e.g., Doe or admin">
         <label>Password (Last 4 digits of Student # or Pass)</label>
         <input type="password" id="password" placeholder="e.g., 2345">
-        <button class="btn" style="width:100%;" onclick="login()">Log In</button>
+        <button class="btn" style="width:100%; margin-top:5px;" onclick="login()">Log In</button>
     </div>
 
     <!-- ADMIN INTERFACE -->
     <div id="adminView" style="display:none;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3>Admin Dashboard</h3>
-            <!-- Admin Global Exports -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+            <h3 style="color:var(--primary);">Admin Dashboard</h3>
             <div class="toolbar-group">
                 <button class="btn btn-secondary" onclick="exportPassportsCSV('ALL')">📊 Export All Passports (CSV)</button>
                 <button class="btn btn-secondary" onclick="exportPassportsPDF('ALL')">📄 Export All Passports (PDF)</button>
@@ -164,8 +182,8 @@
         <div class="card" style="margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
                 <div>
-                    <h3>Teacher Account Settings</h3>
-                    <p style="font-size: 0.85rem; color:#64748b;">Change your login password below.</p>
+                    <h3 style="color:var(--primary);">Teacher Account Settings</h3>
+                    <p style="font-size: 0.85rem; color:#64748b;">Change your portal login password below.</p>
                 </div>
                 <div style="display:flex; gap:10px; align-items:center;">
                     <input type="password" id="teacherNewPassword" placeholder="New Password" style="margin:0; width:200px;">
@@ -176,7 +194,7 @@
 
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:15px;">
-                <h3>Teacher Review Matrix</h3>
+                <h3 style="color:var(--primary);">Teacher Review Matrix</h3>
                 
                 <div class="toolbar-group">
                     <label style="font-weight:bold; font-size:0.9rem;">Filter Course:</label>
@@ -184,7 +202,6 @@
                         <option value="ALL">All Courses</option>
                     </select>
 
-                    <!-- Export Action Buttons -->
                     <button class="btn btn-secondary" onclick="exportCurrentTeacherCSV()" title="Export current filter view as CSV spreadsheet">📊 Export CSV</button>
                     <button class="btn btn-secondary" onclick="exportCurrentTeacherPDF()" title="Print or save current filter view as PDF">📄 Export PDF</button>
                 </div>
@@ -213,7 +230,7 @@
     <!-- STUDENT INTERFACE -->
     <div id="studentView" style="display:none;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3>My Course Passports</h3>
+            <h3 style="color:var(--primary);">My Course Attendance & Participation Passports</h3>
             <button class="btn" onclick="openModal('createPassportModal')">+ New Passport</button>
         </div>
         <div id="studentPassports" class="passport-grid"></div>
@@ -224,7 +241,7 @@
 <div id="createPassportModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3>Create New Course Passport</h3>
+            <h3>Create New Course Attendance and Participation Passport</h3>
             <span class="close-btn" onclick="closeModal('createPassportModal')">&times;</span>
         </div>
         <label>Select Course</label>
@@ -241,7 +258,7 @@
 <div id="studentPassportModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h3 id="studentPassportTitle">Passport Reflections</h3>
+            <h3 id="studentPassportTitle">Course Attendance & Participation Passport Units</h3>
             <span class="close-btn" onclick="closeModal('studentPassportModal')">&times;</span>
         </div>
         <div id="passportUnitsList"></div>
@@ -259,7 +276,7 @@
         <p><strong>Course:</strong> <span id="reviewCourseName"></span></p>
         <p><strong>Unit:</strong> Unit <span id="reviewUnitNum"></span></p>
         <br>
-        <label><strong>Student Reflection:</strong></label>
+        <label><strong>Student Attendance & Participation Reflection:</strong></label>
         <div id="reviewText" style="background:#f1f5f9; padding:12px; border-radius:6px; margin: 8px 0 16px;"></div>
         
         <label><strong>Teacher Notes / Revision Reason (Optional):</strong></label>
@@ -272,7 +289,7 @@
 
         <hr style="margin: 15px 0; border:0; border-top:1px solid #cbd5e1;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:0.85rem; font-weight:bold; color:#64748b;">Export This Student's Passport:</span>
+            <span style="font-size:0.85rem; font-weight:bold; color:#64748b;">Export Student Passport:</span>
             <div class="toolbar-group">
                 <button class="btn btn-secondary" onclick="exportSinglePassportCSV(activePassportId)">📊 CSV</button>
                 <button class="btn btn-secondary" onclick="exportSinglePassportPDF(activePassportId)">📄 PDF</button>
@@ -290,8 +307,8 @@
             { id: "t2", name: "Ms. Johnson", username: "Johnson", password: "teacher123" }
         ],
         students: [
-            { id: "s1", firstName: "Jane", lastName: "Doe", studentNum: "1002345" }, // user: Doe, pass: 2345
-            { id: "s2", firstName: "Alex", lastName: "Lee", studentNum: "8809876" }   // user: Lee, pass: 9876
+            { id: "s1", firstName: "Jane", lastName: "Doe", studentNum: "1002345" },
+            { id: "s2", firstName: "Alex", lastName: "Lee", studentNum: "8809876" }
         ],
         passports: [
             {
@@ -302,7 +319,7 @@
                 teacher: "Mr. Smith",
                 units: Array.from({ length: 16 }, (_, i) => ({
                     unitNum: i + 1,
-                    reflection: i === 0 ? "I actively participated in working through unit 1 equations." : "",
+                    reflection: i === 0 ? "I actively participated in working through unit 1 equations and maintained perfect attendance." : "",
                     approved: false,
                     needsRevision: false,
                     feedback: ""
@@ -316,10 +333,10 @@
                 teacher: "Mr. Smith",
                 units: Array.from({ length: 16 }, (_, i) => ({
                     unitNum: i + 1,
-                    reflection: i === 0 ? "Understood key concepts quickly." : "",
+                    reflection: i === 0 ? "Understood key concepts quickly and attended all lab seminars." : "",
                     approved: true,
                     needsRevision: false,
-                    feedback: "Great job!"
+                    feedback: "Great attendance and active participation!"
                 }))
             }
         ]
@@ -586,7 +603,7 @@
         displayedPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
 
         if(displayedPassports.length === 0) {
-            body.innerHTML = `<tr><td colspan="18">No student passports found for this filter.</td></tr>`;
+            body.innerHTML = `<tr><td colspan="18">No student course attendance and participation passports found for this filter.</td></tr>`;
             return;
         }
 
@@ -624,7 +641,7 @@
         const unit = passport.units[unitIndex];
 
         if (!unit.reflection && !unit.approved && !unit.needsRevision) {
-            alert('Student has not submitted a reflection for this unit yet.');
+            alert('Student has not submitted an attendance and participation reflection for this unit yet.');
             return;
         }
 
@@ -668,16 +685,16 @@
         
         const container = document.getElementById('studentPassports');
         if(myPassports.length === 0) {
-            container.innerHTML = `<p>No course passports created yet. Click "+ New Passport" above to start.</p>`;
+            container.innerHTML = `<p>No course attendance and participation passports created yet. Click "+ New Passport" above to start.</p>`;
             return;
         }
 
         container.innerHTML = myPassports.map(p => `
             <div class="passport-card" onclick="openPassportModal('${p.id}')">
-                <h4>${p.course}</h4>
+                <h4 style="color:var(--primary);">${p.course}</h4>
                 <p style="color:#64748b; font-size:0.9rem;">Teacher: ${p.teacher}</p>
                 <div style="margin-top:10px; font-size:0.85rem;">
-                    Completed Units: ${p.units.filter(u => u.approved).length}/16
+                    Signed Off Units: ${p.units.filter(u => u.approved).length}/16
                 </div>
             </div>
         `).join('');
@@ -712,7 +729,7 @@
         const db = loadData();
         const passport = db.passports.find(p => p.id === passportId);
 
-        document.getElementById('studentPassportTitle').innerText = `${passport.course} - Passport Units`;
+        document.getElementById('studentPassportTitle').innerText = `${passport.course} - Course Attendance & Participation Passport`;
         
         const unitsContainer = document.getElementById('passportUnitsList');
         unitsContainer.innerHTML = passport.units.map((u, index) => {
@@ -732,7 +749,7 @@
                         <span>${statusBadge}</span>
                     </div>
                     ${u.feedback ? `<div style="background:#fff1f2; border:1px solid #fecdd3; padding:8px; border-radius:4px; font-size:0.85rem; color:#9f1239; margin-bottom:8px;"><strong>Teacher Feedback:</strong> ${u.feedback}</div>` : ''}
-                    <textarea id="reflection_${index}" rows="2" placeholder="Write your reflection on participation for Unit ${u.unitNum}..." ${u.approved ? 'disabled' : ''}>${u.reflection}</textarea>
+                    <textarea id="reflection_${index}" rows="2" placeholder="Write your reflection on attendance and participation for Unit ${u.unitNum}..." ${u.approved ? 'disabled' : ''}>${u.reflection}</textarea>
                     ${!u.approved ? `<button class="btn" style="padding:4px 8px; font-size:0.8rem;" onclick="saveReflection(${index})">${u.needsRevision ? 'Resubmit Unit ' + u.unitNum : 'Save Unit ' + u.unitNum}</button>` : ''}
                 </div>
             `;
@@ -749,15 +766,12 @@
         passport.units[unitIndex].reflection = text;
         passport.units[unitIndex].needsRevision = false;
         saveData(db);
-        alert('Reflection saved and submitted for teacher review!');
+        alert('Attendance & participation reflection saved and submitted for teacher review!');
         renderStudentView();
         openPassportModal(activePassportId);
     }
 
-    // ==========================================
     // EXPORT ENGINE (SPREADSHEET & PDF)
-    // ==========================================
-
     function downloadFile(filename, data, type) {
         const blob = new Blob([data], { type });
         const link = document.createElement("a");
@@ -775,7 +789,6 @@
         return "Incomplete";
     }
 
-    // Export Helpers for Teacher/Admin View Context
     function exportCurrentTeacherCSV() {
         const selectedCourse = document.getElementById('teacherCourseFilter').value;
         exportPassportsCSV(selectedCourse, currentUser.name);
@@ -798,7 +811,7 @@
 
         if (targetPassports.length === 0) return alert('No passport records found to export.');
 
-        let csv = "Student Name,Course,Teacher,Unit Number,Status,Student Reflection,Teacher Feedback\n";
+        let csv = "Student Name,Course,Teacher,Unit Number,Status,Attendance and Participation Reflection,Teacher Feedback\n";
 
         targetPassports.forEach(p => {
             p.units.forEach(u => {
@@ -810,7 +823,7 @@
         });
 
         const safeCourseName = courseFilter.replace(/[^a-zA-Z0-9]/g, '_');
-        downloadFile(`Course_Passports_${safeCourseName}.csv`, csv, 'text/csv;charset=utf-8;');
+        downloadFile(`Course_Attendance_Participation_Passports_${safeCourseName}.csv`, csv, 'text/csv;charset=utf-8;');
     }
 
     function exportSinglePassportCSV(passportId) {
@@ -818,7 +831,7 @@
         const passport = db.passports.find(p => p.id === passportId);
         if (!passport) return;
 
-        let csv = "Student Name,Course,Teacher,Unit Number,Status,Student Reflection,Teacher Feedback\n";
+        let csv = "Student Name,Course,Teacher,Unit Number,Status,Attendance and Participation Reflection,Teacher Feedback\n";
         passport.units.forEach(u => {
             const cleanRef = `"${(u.reflection || '').replace(/"/g, '""')}"`;
             const cleanFeed = `"${(u.feedback || '').replace(/"/g, '""')}"`;
@@ -827,10 +840,10 @@
         });
 
         const safeStudentName = passport.studentName.replace(/[^a-zA-Z0-9]/g, '_');
-        downloadFile(`Passport_${safeStudentName}_${passport.course}.csv`, csv, 'text/csv;charset=utf-8;');
+        downloadFile(`Attendance_Participation_Passport_${safeStudentName}_${passport.course}.csv`, csv, 'text/csv;charset=utf-8;');
     }
 
-    // 2. PRINT / PDF EXPORTS
+    // 2. PRINT / PDF EXPORTS WITH SCHOOL LOGO
     function generatePrintWindow(title, htmlContent) {
         const win = window.open('', '_blank');
         win.document.write(`
@@ -839,23 +852,25 @@
             <head>
                 <title>${title}</title>
                 <style>
-                    body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; color: #1e293b; }
-                    .passport-block { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #ccc; padding-bottom: 20px; }
+                    body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 25px; color: #0f172a; }
+                    .pdf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1e2b58; padding-bottom: 15px; margin-bottom: 25px; }
+                    .pdf-logo { height: 75px; width: auto; }
+                    .passport-block { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #cbd5e1; padding-bottom: 20px; }
                     .passport-block:last-child { page-break-after: auto; border: none; }
-                    h2 { margin-bottom: 4px; color: #0f172a; }
+                    h2 { color: #1e2b58; margin-bottom: 4px; }
                     .meta { color: #475569; font-size: 0.9rem; margin-bottom: 15px; }
                     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
                     th, td { border: 1px solid #94a3b8; padding: 8px; text-align: left; font-size: 0.85rem; }
-                    th { background: #f1f5f9; }
+                    th { background: #f1f5f9; color: #1e2b58; }
                     .status-approved { color: #15803d; font-weight: bold; }
                     .status-revision { color: #b91c1c; font-weight: bold; }
                     .status-pending { color: #854d0e; font-weight: bold; }
-                    .no-print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+                    .no-print-btn { background: #1e2b58; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
                     @media print { .no-print-btn { display: none; } }
                 </style>
             </head>
             <body>
-                <button class="no-print-btn" onclick="window.print()">🖨️ Save as PDF / Print</button>
+                <button class="no-print-btn" onclick="window.print()">🖨️ Save as PDF / Print Report</button>
                 ${htmlContent}
             </body>
             </html>
@@ -874,7 +889,15 @@
 
         if (targetPassports.length === 0) return alert('No passport records found to export.');
 
-        let html = `<h2>Course Passports Summary Report</h2><p class="meta">Generated: ${new Date().toLocaleDateString()} | Total Passports: ${targetPassports.length}</p>`;
+        let html = `
+            <div class="pdf-header">
+                <div>
+                    <h2>Course Attendance and Participation Passport Summary Report</h2>
+                    <p class="meta">Generated: ${new Date().toLocaleDateString()} | Total Passports: ${targetPassports.length}</p>
+                </div>
+                <img src="MWCSS_Logo.svg" class="pdf-logo" onerror="this.style.display='none'">
+            </div>
+        `;
 
         targetPassports.forEach(p => {
             html += `
@@ -886,7 +909,7 @@
                             <tr>
                                 <th style="width: 8%;">Unit</th>
                                 <th style="width: 17%;">Status</th>
-                                <th style="width: 45%;">Student Reflection</th>
+                                <th style="width: 45%;">Attendance & Participation Reflection</th>
                                 <th style="width: 30%;">Teacher Notes</th>
                             </tr>
                         </thead>
@@ -922,15 +945,20 @@
         if (!passport) return;
 
         let html = `
+            <div class="pdf-header">
+                <div>
+                    <h2>Course Attendance and Participation Passport</h2>
+                    <p class="meta">Student: <strong>${passport.studentName}</strong> | Course: <strong>${passport.course}</strong> | Teacher: <strong>${passport.teacher}</strong></p>
+                </div>
+                <img src="MWCSS_Logo.svg" class="pdf-logo" onerror="this.style.display='none'">
+            </div>
             <div class="passport-block" style="border:none;">
-                <h2>Student Course Passport: ${passport.studentName}</h2>
-                <div class="meta">Course: <strong>${passport.course}</strong> | Teacher: <strong>${passport.teacher}</strong></div>
                 <table>
                     <thead>
                         <tr>
                             <th style="width: 8%;">Unit</th>
                             <th style="width: 17%;">Status</th>
-                            <th style="width: 45%;">Student Reflection</th>
+                            <th style="width: 45%;">Attendance & Participation Reflection</th>
                             <th style="width: 30%;">Teacher Feedback</th>
                         </tr>
                     </thead>
