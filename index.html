@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bulk Upload Tester</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 650px; margin: 40px auto; padding: 0 20px; color: #333; }
+    .upload-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 20px; background: #fafafa; }
+    button { padding: 8px 16px; cursor: pointer; margin-top: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; }
+    button:hover { background-color: #0056b3; }
+    pre { background: #1e1e1e; color: #00ff66; padding: 15px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+  </style>
+</head>
+<body>
+
+  <h2>Bulk Upload Tester</h2>
+
+  <!-- Teachers Upload Form -->
+  <div class="upload-card">
+    <h3>1. Bulk Teachers CSV Upload</h3>
+    <form id="teacherForm">
+      <input type="file" id="teacherFile" accept=".csv" required />
+      <br>
+      <button type="submit">Upload Teachers</button>
+    </form>
+  </div>
+
+  <!-- Courses Upload Form -->
+  <div class="upload-card">
+    <h3>2. Bulk Courses CSV Upload</h3>
+    <form id="courseForm">
+      <input type="file" id="courseFile" accept=".csv" required />
+      <br>
+      <button type="submit">Upload Courses</button>
+    </form>
+  </div>
+
+  <!-- Server Response Output -->
+  <div class="upload-card">
+    <h3>Server Response Log</h3>
+    <pre id="output">Upload a CSV file above to view parsed JSON output...</pre>
+  </div>
+
+  <script>
+    const setupFormHandler = (formId, fileInputId, endpoint) => {
+      document.getElementById(formId).addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const fileInput = document.getElementById(fileInputId);
+        const output = document.getElementById('output');
+
+        if (!fileInput.files[0]) return;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        output.textContent = 'Processing upload...';
+
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await response.json();
+          output.textContent = JSON.stringify(data, null, 2);
+        } catch (error) {
+          output.textContent = 'Error: ' + error.message;
+        }
+      });
+    };
+
+    setupFormHandler('teacherForm', 'teacherFile', '/api/bulk-teachers');
+    setupFormHandler('courseForm', 'courseFile', '/api/bulk-courses');
+  </script>
+
+</body>
+</html>
