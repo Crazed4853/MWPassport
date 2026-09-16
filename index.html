@@ -81,6 +81,9 @@
         
         /* Flex Tools */
         .toolbar-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        
+        /* Assistance Banner */
+        .assist-banner { background: #fef3c7; border: 1px solid #f59e0b; color: #92400e; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     </style>
 </head>
 <body>
@@ -111,7 +114,7 @@
         </p>
         <label>Username (Last Name)</label>
         <input type="text" id="username" placeholder="e.g., Doe or admin">
-        <label>Password (Last 4 digits of Student # or Pass)</label>
+        <label>Password (Last 4 digits of Student # or set password)</label>
         <input type="password" id="password" placeholder="e.g., 2345">
         <button class="btn" style="width:100%; margin-top:5px;" onclick="login()">Log In</button>
     </div>
@@ -144,7 +147,7 @@
             </div>
 
             <div class="card">
-                <h4>Add New Student</h4>
+                <h4>Manage & Assist Students</h4>
                 <input type="text" id="adminStudentFirst" placeholder="First Name">
                 <input type="text" id="adminStudentLast" placeholder="Last Name (Username)">
                 <input type="text" id="adminStudentNum" placeholder="Student Number (e.g. 1002345)">
@@ -192,6 +195,20 @@
             </div>
         </div>
 
+        <!-- TEACHER STUDENT ASSISTANCE TOOL -->
+        <div class="card" style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                <div>
+                    <h3 style="color:var(--primary);">Student Passport Assistance</h3>
+                    <p style="font-size: 0.85rem; color:#64748b;">Select a student to view their passport dashboard and help them create or manage passports.</p>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <select id="teacherStudentAssistSelect" style="width:auto; margin:0; padding:8px 12px;"></select>
+                    <button class="btn" onclick="assistSelectedStudentFromTeacher()">Open Student View</button>
+                </div>
+            </div>
+        </div>
+
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:15px;">
                 <h3 style="color:var(--primary);">Teacher Review Matrix</h3>
@@ -229,15 +246,37 @@
 
     <!-- STUDENT INTERFACE -->
     <div id="studentView" style="display:none;">
+        <!-- STAFF ASSISTANCE BANNER -->
+        <div id="impersonationBanner" class="assist-banner" style="display:none;">
+            <div>
+                <strong>⚠️ Staff Assistance Mode:</strong> Currently managing passports for <span id="impersonatedStudentName" style="font-weight:bold;"></span>.
+            </div>
+            <button class="btn btn-secondary" onclick="exitImpersonation()">Return to My Dashboard</button>
+        </div>
+
+        <!-- STUDENT ACCOUNT SETTINGS (PASSWORD CHANGE) -->
+        <div id="studentAccountCard" class="card" style="margin-bottom:20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
+                <div>
+                    <h3 style="color:var(--primary);">Student Account Settings</h3>
+                    <p style="font-size: 0.85rem; color:#64748b;">Change your portal login password below.</p>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="password" id="studentNewPassword" placeholder="New Password" style="margin:0; width:200px;">
+                    <button class="btn btn-success" onclick="updateStudentPassword()">Update Password</button>
+                </div>
+            </div>
+        </div>
+
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
-            <h3 style="color:var(--primary);">My Course Attendance & Participation Passports</h3>
+            <h3 style="color:var(--primary);" id="studentPassportHeading">My Course Attendance & Participation Passports</h3>
             <button class="btn" onclick="openModal('createPassportModal')">+ New Passport</button>
         </div>
         <div id="studentPassports" class="passport-grid"></div>
     </div>
 </div>
 
-<!-- MODAL: CREATE PASSPORT (Student) -->
+<!-- MODAL: CREATE PASSPORT (Student / Staff Assistance) -->
 <div id="createPassportModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -307,8 +346,8 @@
             { id: "t2", name: "Ms. Johnson", username: "Johnson", password: "teacher123" }
         ],
         students: [
-            { id: "s1", firstName: "Jane", lastName: "Doe", studentNum: "1002345" },
-            { id: "s2", firstName: "Alex", lastName: "Lee", studentNum: "8809876" }
+            { id: "s1", firstName: "Jane", lastName: "Doe", studentNum: "1002345", password: "2345" },
+            { id: "s2", firstName: "Alex", lastName: "Lee", studentNum: "8809876", password: "9876" }
         ],
         passports: [
             {
@@ -354,8 +393,13 @@
     }
 
     let currentUser = null;
+    let impersonatedStudent = null;
     let activePassportId = null;
     let activeUnitIndex = null;
+
+    function getActiveStudent() {
+        return impersonatedStudent || (currentUser && currentUser.role === 'student' ? currentUser : null);
+    }
 
     // LOGIN SYSTEM
     function login() {
@@ -377,8 +421,8 @@
         }
 
         const student = db.students.find(s => {
-            const last4 = s.studentNum.slice(-4);
-            return s.lastName.toLowerCase() === uInput.toLowerCase() && last4 === pInput;
+            const effectivePass = s.password || s.studentNum.slice(-4);
+            return s.lastName.toLowerCase() === uInput.toLowerCase() && effectivePass === pInput;
         });
 
         if (student) {
@@ -392,6 +436,7 @@
 
     function logout() {
         currentUser = null;
+        impersonatedStudent = null;
         document.getElementById('loginView').style.display = 'block';
         document.getElementById('adminView').style.display = 'none';
         document.getElementById('teacherView').style.display = 'none';
@@ -402,18 +447,25 @@
     }
 
     function showDashboard() {
+        impersonatedStudent = null;
         document.getElementById('loginView').style.display = 'none';
         document.getElementById('userInfo').style.display = 'block';
         document.getElementById('userGreeting').innerText = `Logged in as: ${currentUser.name || currentUser.lastName + ' (' + currentUser.role + ')'}`;
 
         if (currentUser.role === 'admin') {
             document.getElementById('adminView').style.display = 'block';
+            document.getElementById('teacherView').style.display = 'none';
+            document.getElementById('studentView').style.display = 'none';
             renderAdminLists();
         } else if (currentUser.role === 'teacher') {
             document.getElementById('teacherView').style.display = 'block';
+            document.getElementById('adminView').style.display = 'none';
+            document.getElementById('studentView').style.display = 'none';
             renderTeacherView();
         } else if (currentUser.role === 'student') {
             document.getElementById('studentView').style.display = 'block';
+            document.getElementById('adminView').style.display = 'none';
+            document.getElementById('teacherView').style.display = 'none';
             renderStudentView();
         }
     }
@@ -430,7 +482,13 @@
         `).join('');
 
         document.getElementById('studentList').innerHTML = db.students.map(s => `
-            <li><span>${s.lastName}, ${s.firstName} (${s.studentNum})</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeStudent('${s.id}')">Remove</button></li>
+            <li>
+                <span>${s.lastName}, ${s.firstName} (${s.studentNum})</span>
+                <div style="display:flex; gap:4px;">
+                    <button class="btn" style="padding:2px 8px; font-size:0.75rem;" onclick="assistStudent('${s.id}')">Manage Passports</button>
+                    <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeStudent('${s.id}')">Remove</button>
+                </div>
+            </li>
         `).join('');
     }
 
@@ -483,7 +541,7 @@
         if (!first || !last || !num) return;
         
         const db = loadData();
-        db.students.push({ id: 's_' + Date.now(), firstName: first, lastName: last, studentNum: num });
+        db.students.push({ id: 's_' + Date.now(), firstName: first, lastName: last, studentNum: num, password: num.slice(-4) });
         saveData(db);
         
         document.getElementById('adminStudentFirst').value = '';
@@ -536,7 +594,8 @@
                         const first = item.firstName || item.First || item.first_name || '';
                         const last = item.lastName || item.Last || item.last_name || Object.values(item)[0] || '';
                         const num = String(item.studentNum || item.id || item.ID || item.student_id || Math.floor(1000000 + Math.random() * 9000000));
-                        if (last) db.students.push({ id: 's_' + Date.now() + Math.random(), firstName: first, lastName: last, studentNum: num });
+                        const password = item.password || item.Password || num.slice(-4);
+                        if (last) db.students.push({ id: 's_' + Date.now() + Math.random(), firstName: first, lastName: last, studentNum: num, password });
                     }
                 });
 
@@ -579,10 +638,27 @@
         select.innerHTML = optionsHtml;
     }
 
+    function populateTeacherStudentAssistSelect() {
+        const db = loadData();
+        const select = document.getElementById('teacherStudentAssistSelect');
+        if (!select) return;
+        const sortedStudents = [...db.students].sort((a, b) => a.lastName.localeCompare(b.lastName));
+        select.innerHTML = sortedStudents.map(s => `<option value="${s.id}">${s.lastName}, ${s.firstName} (${s.studentNum})</option>`).join('');
+    }
+
+    function assistSelectedStudentFromTeacher() {
+        const select = document.getElementById('teacherStudentAssistSelect');
+        if (select && select.value) {
+            assistStudent(select.value);
+        }
+    }
+
     function renderTeacherView() {
         const db = loadData();
         const headerTr = document.getElementById('teacherTableHeader');
         const body = document.getElementById('teacherTableBody');
+
+        populateTeacherStudentAssistSelect();
 
         let headerHtml = '<th>Student</th><th>Course</th>';
         for(let i = 1; i <= 16; i++) {
@@ -599,7 +675,6 @@
             displayedPassports = displayedPassports.filter(p => p.course === selectedCourse);
         }
 
-        // Alphabetical sort by student name
         displayedPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
 
         if(displayedPassports.length === 0) {
@@ -678,26 +753,82 @@
         renderTeacherView();
     }
 
-    // STUDENT FUNCTIONS
+    // IMPERSONATION / ASSISTANCE LOGIC (ADMIN & TEACHER)
+    function assistStudent(studentId) {
+        const db = loadData();
+        const student = db.students.find(s => s.id === studentId);
+        if (!student) return;
+
+        impersonatedStudent = student;
+
+        document.getElementById('adminView').style.display = 'none';
+        document.getElementById('teacherView').style.display = 'none';
+        document.getElementById('studentView').style.display = 'block';
+
+        document.getElementById('impersonationBanner').style.display = 'flex';
+        document.getElementById('impersonatedStudentName').innerText = `${student.firstName} ${student.lastName} (${student.studentNum})`;
+
+        renderStudentView();
+    }
+
+    function exitImpersonation() {
+        impersonatedStudent = null;
+        document.getElementById('impersonationBanner').style.display = 'none';
+        document.getElementById('studentView').style.display = 'none';
+
+        if (currentUser.role === 'admin') {
+            document.getElementById('adminView').style.display = 'block';
+            renderAdminLists();
+        } else if (currentUser.role === 'teacher') {
+            document.getElementById('teacherView').style.display = 'block';
+            renderTeacherView();
+        }
+    }
+
+    // STUDENT FUNCTIONS & PASSWORD UPDATE
+    function updateStudentPassword() {
+        const newPass = document.getElementById('studentNewPassword').value.trim();
+        if (!newPass) return alert('Please enter a new password.');
+
+        const targetStudent = getActiveStudent();
+        if (!targetStudent) return;
+
+        const db = loadData();
+        const student = db.students.find(s => s.id === targetStudent.id);
+        if (student) {
+            student.password = newPass;
+            targetStudent.password = newPass;
+            saveData(db);
+            alert(`Password updated successfully for ${student.firstName} ${student.lastName}!`);
+            document.getElementById('studentNewPassword').value = '';
+        }
+    }
+
     function renderStudentView() {
         const db = loadData();
-        const myPassports = db.passports.filter(p => p.studentId === currentUser.id);
-        
+        const activeStudent = getActiveStudent();
+        if (!activeStudent) return;
+
+        const myPassports = db.passports.filter(p => p.studentId === activeStudent.id);
         const container = document.getElementById('studentPassports');
+
+        document.getElementById('studentPassportHeading').innerText = impersonatedStudent 
+            ? `${activeStudent.firstName}'s Course Passports` 
+            : 'My Course Attendance & Participation Passports';
+
         if(myPassports.length === 0) {
             container.innerHTML = `<p>No course attendance and participation passports created yet. Click "+ New Passport" above to start.</p>`;
-            return;
-        }
-
-        container.innerHTML = myPassports.map(p => `
-            <div class="passport-card" onclick="openPassportModal('${p.id}')">
-                <h4 style="color:var(--primary);">${p.course}</h4>
-                <p style="color:#64748b; font-size:0.9rem;">Teacher: ${p.teacher}</p>
-                <div style="margin-top:10px; font-size:0.85rem;">
-                    Signed Off Units: ${p.units.filter(u => u.approved).length}/16
+        } else {
+            container.innerHTML = myPassports.map(p => `
+                <div class="passport-card" onclick="openPassportModal('${p.id}')">
+                    <h4 style="color:var(--primary);">${p.course}</h4>
+                    <p style="color:#64748b; font-size:0.9rem;">Teacher: ${p.teacher}</p>
+                    <div style="margin-top:10px; font-size:0.85rem;">
+                        Signed Off Units: ${p.units.filter(u => u.approved).length}/16
+                    </div>
                 </div>
-            </div>
-        `).join('');
+            `).join('');
+        }
 
         document.getElementById('passportCourseSelect').innerHTML = db.courses.map(c => `<option value="${c}">${c}</option>`).join('');
         document.getElementById('passportTeacherSelect').innerHTML = db.teachers.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
@@ -708,11 +839,14 @@
         const teacher = document.getElementById('passportTeacherSelect').value;
         if (!course || !teacher) return;
 
+        const activeStudent = getActiveStudent();
+        if (!activeStudent) return;
+
         const db = loadData();
         const newPassport = {
             id: 'p_' + Date.now(),
-            studentId: currentUser.id,
-            studentName: `${currentUser.lastName}, ${currentUser.firstName}`,
+            studentId: activeStudent.id,
+            studentName: `${activeStudent.lastName}, ${activeStudent.firstName}`,
             course: course,
             teacher: teacher,
             units: Array.from({ length: 16 }, (_, i) => ({ unitNum: i + 1, reflection: "", approved: false, needsRevision: false, feedback: "" }))
@@ -766,7 +900,7 @@
         passport.units[unitIndex].reflection = text;
         passport.units[unitIndex].needsRevision = false;
         saveData(db);
-        alert('Attendance & participation reflection saved and submitted for teacher review!');
+        alert('Attendance & participation reflection saved!');
         renderStudentView();
         openPassportModal(activePassportId);
     }
