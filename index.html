@@ -26,8 +26,10 @@
         header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 2px solid var(--border); margin-bottom: 20px; }
         
         .card { background: var(--card-bg); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .btn { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+        .btn { background: var(--primary); color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
         .btn:hover { background: var(--primary-hover); }
+        .btn-secondary { background: #64748b; color: white; }
+        .btn-secondary:hover { background: #475569; }
         .btn-danger { background: #ef4444; color: white; }
         .btn-danger:hover { background: #dc2626; }
         .btn-success { background: #16a34a; color: white; }
@@ -61,13 +63,16 @@
 
         /* Modal */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 100; }
-        .modal-content { background: white; padding: 24px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; }
+        .modal-content { background: white; padding: 24px; border-radius: 8px; max-width: 650px; width: 90%; max-height: 90vh; overflow-y: auto; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .close-btn { cursor: pointer; font-size: 1.5rem; font-weight: bold; }
 
         .unit-item { border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
         .unit-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 8px; }
         .badge-check { color: var(--approved-dark); font-size: 1rem; }
+        
+        /* Flex Tools */
+        .toolbar-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     </style>
 </head>
 <body>
@@ -94,8 +99,15 @@
 
     <!-- ADMIN INTERFACE -->
     <div id="adminView" style="display:none;">
-        <h3>Admin Dashboard</h3>
-        <br>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+            <h3>Admin Dashboard</h3>
+            <!-- Admin Global Exports -->
+            <div class="toolbar-group">
+                <button class="btn btn-secondary" onclick="exportPassportsCSV('ALL')">📊 Export All Passports (CSV)</button>
+                <button class="btn btn-secondary" onclick="exportPassportsPDF('ALL')">📄 Export All Passports (PDF)</button>
+            </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
             <div class="card">
                 <h4>Add New Course</h4>
@@ -149,7 +161,6 @@
 
     <!-- TEACHER INTERFACE -->
     <div id="teacherView" style="display:none;">
-        <!-- Teacher Account Settings Card -->
         <div class="card" style="margin-bottom:20px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px;">
                 <div>
@@ -164,13 +175,18 @@
         </div>
 
         <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:15px;">
                 <h3>Teacher Review Matrix</h3>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <label style="font-weight:bold; font-size:0.9rem;">Filter by Course:</label>
+                
+                <div class="toolbar-group">
+                    <label style="font-weight:bold; font-size:0.9rem;">Filter Course:</label>
                     <select id="teacherCourseFilter" onchange="renderTeacherView()" style="width:auto; margin:0; padding:6px 12px;">
                         <option value="ALL">All Courses</option>
                     </select>
+
+                    <!-- Export Action Buttons -->
+                    <button class="btn btn-secondary" onclick="exportCurrentTeacherCSV()" title="Export current filter view as CSV spreadsheet">📊 Export CSV</button>
+                    <button class="btn btn-secondary" onclick="exportCurrentTeacherPDF()" title="Print or save current filter view as PDF">📄 Export PDF</button>
                 </div>
             </div>
             
@@ -232,7 +248,7 @@
     </div>
 </div>
 
-<!-- MODAL: REVIEW REFLECTION (Teacher View) -->
+<!-- MODAL: REVIEW REFLECTION & INDIVIDUAL EXPORT (Teacher View) -->
 <div id="teacherReviewModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -249,9 +265,18 @@
         <label><strong>Teacher Notes / Revision Reason (Optional):</strong></label>
         <textarea id="teacherFeedback" rows="2" placeholder="Explain what needs revision or leave encouragement..."></textarea>
 
-        <div style="display:flex; gap:10px; margin-top:10px;">
+        <div style="display:flex; gap:10px; margin-top:10px; margin-bottom:15px;">
             <button class="btn btn-success" style="flex:1;" onclick="saveTeacherReview(true)">Sign Off (Approve)</button>
             <button class="btn btn-danger" style="flex:1;" onclick="saveTeacherReview(false)">Request Revision</button>
+        </div>
+
+        <hr style="margin: 15px 0; border:0; border-top:1px solid #cbd5e1;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:0.85rem; font-weight:bold; color:#64748b;">Export This Student's Passport:</span>
+            <div class="toolbar-group">
+                <button class="btn btn-secondary" onclick="exportSinglePassportCSV(activePassportId)">📊 CSV</button>
+                <button class="btn btn-secondary" onclick="exportSinglePassportPDF(activePassportId)">📄 PDF</button>
+            </div>
         </div>
     </div>
 </div>
@@ -300,7 +325,6 @@
         ]
     };
 
-    // Load or initialize DB
     function loadData() {
         if (!localStorage.getItem('appData')) {
             localStorage.setItem('appData', JSON.stringify(defaultData));
@@ -322,14 +346,12 @@
         const pInput = document.getElementById('password').value.trim();
         const db = loadData();
 
-        // 1. Check Admin
         if (uInput.toLowerCase() === 'admin' && pInput === 'admin') {
             currentUser = { role: 'admin', name: 'Administrator' };
             showDashboard();
             return;
         }
 
-        // 2. Check Teacher
         const teacher = db.teachers.find(t => t.username.toLowerCase() === uInput.toLowerCase() && t.password === pInput);
         if (teacher) {
             currentUser = { role: 'teacher', ...teacher };
@@ -337,7 +359,6 @@
             return;
         }
 
-        // 3. Check Student (Username = Last Name, Password = Last 4 digits of Student Num)
         const student = db.students.find(s => {
             const last4 = s.studentNum.slice(-4);
             return s.lastName.toLowerCase() === uInput.toLowerCase() && last4 === pInput;
@@ -380,29 +401,19 @@
         }
     }
 
-    // ADMIN FUNCTIONS
+    // ADMIN MANAGEMENT
     function renderAdminLists() {
         const db = loadData();
-        
         document.getElementById('courseList').innerHTML = db.courses.map((c, i) => `
-            <li>
-                <span>${c}</span>
-                <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeCourse(${i})">Remove</button>
-            </li>
+            <li><span>${c}</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeCourse(${i})">Remove</button></li>
         `).join('');
 
         document.getElementById('teacherList').innerHTML = db.teachers.map(t => `
-            <li>
-                <span>${t.name} (User: ${t.username})</span>
-                <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeTeacher('${t.id}')">Remove</button>
-            </li>
+            <li><span>${t.name} (User: ${t.username})</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeTeacher('${t.id}')">Remove</button></li>
         `).join('');
 
         document.getElementById('studentList').innerHTML = db.students.map(s => `
-            <li>
-                <span>${s.lastName}, ${s.firstName} (${s.studentNum})</span>
-                <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeStudent('${s.id}')">Remove</button>
-            </li>
+            <li><span>${s.lastName}, ${s.firstName} (${s.studentNum})</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeStudent('${s.id}')">Remove</button></li>
         `).join('');
     }
 
@@ -472,7 +483,6 @@
         renderAdminLists();
     }
 
-    // CSV BULK UPLOAD HANDLER
     async function uploadCSV(endpoint, inputId, entityType) {
         const input = document.getElementById(inputId);
         const output = document.getElementById('csvOutput');
@@ -493,7 +503,7 @@
             const result = await res.json();
 
             if (result.status === 'Success' && Array.isArray(result.data)) {
-                output.textContent = `Success! Processed ${result.count} records from ${input.files[0].name}`;
+                output.textContent = `Success! Processed ${result.count} records.`;
                 const db = loadData();
 
                 result.data.forEach(item => {
@@ -519,17 +529,14 @@
                 output.textContent = 'Error: ' + (result.error || 'Failed to parse CSV file');
             }
         } catch (err) {
-            output.textContent = 'Server endpoint error: ' + err.message + '\nMake sure your Express backend is running.';
+            output.textContent = 'Server endpoint error: ' + err.message;
         }
     }
 
-    // TEACHER SELF SERVICE & MATRIX FUNCTIONS
+    // TEACHER SELF SERVICE & MATRIX
     function updateTeacherPassword() {
         const newPass = document.getElementById('teacherNewPassword').value.trim();
-        if (!newPass) {
-            alert('Please enter a new password.');
-            return;
-        }
+        if (!newPass) return alert('Please enter a new password.');
 
         const db = loadData();
         const teacher = db.teachers.find(t => t.id === currentUser.id);
@@ -545,8 +552,6 @@
     function updateTeacherCourseFilterOptions(myPassports) {
         const select = document.getElementById('teacherCourseFilter');
         const currentValue = select.value || "ALL";
-        
-        // Dynamic set of courses taught by this specific teacher
         const courses = [...new Set(myPassports.map(p => p.course))].sort();
         
         let optionsHtml = '<option value="ALL">All Courses</option>';
@@ -568,20 +573,16 @@
         }
         headerTr.innerHTML = headerHtml;
 
-        // Get current teacher's assigned passports
         const allTeacherPassports = db.passports.filter(p => p.teacher === currentUser.name);
-
-        // Populate and synchronize course filter options
         updateTeacherCourseFilterOptions(allTeacherPassports);
 
-        // Filter passports based on selected course option
         const selectedCourse = document.getElementById('teacherCourseFilter').value;
         let displayedPassports = [...allTeacherPassports];
         if (selectedCourse && selectedCourse !== 'ALL') {
             displayedPassports = displayedPassports.filter(p => p.course === selectedCourse);
         }
 
-        // Always sort students alphabetically by name ("LastName, FirstName")
+        // Alphabetical sort by student name
         displayedPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
 
         if(displayedPassports.length === 0) {
@@ -681,11 +682,8 @@
             </div>
         `).join('');
 
-        const courseSelect = document.getElementById('passportCourseSelect');
-        courseSelect.innerHTML = db.courses.map(c => `<option value="${c}">${c}</option>`).join('');
-
-        const teacherSelect = document.getElementById('passportTeacherSelect');
-        teacherSelect.innerHTML = db.teachers.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+        document.getElementById('passportCourseSelect').innerHTML = db.courses.map(c => `<option value="${c}">${c}</option>`).join('');
+        document.getElementById('passportTeacherSelect').innerHTML = db.teachers.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
     }
 
     function createPassport() {
@@ -754,6 +752,211 @@
         alert('Reflection saved and submitted for teacher review!');
         renderStudentView();
         openPassportModal(activePassportId);
+    }
+
+    // ==========================================
+    // EXPORT ENGINE (SPREADSHEET & PDF)
+    // ==========================================
+
+    function downloadFile(filename, data, type) {
+        const blob = new Blob([data], { type });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function getPassportStatusLabel(unit) {
+        if (unit.approved) return "Signed Off";
+        if (unit.needsRevision) return "Revision Requested";
+        if (unit.reflection) return "Pending Review";
+        return "Incomplete";
+    }
+
+    // Export Helpers for Teacher/Admin View Context
+    function exportCurrentTeacherCSV() {
+        const selectedCourse = document.getElementById('teacherCourseFilter').value;
+        exportPassportsCSV(selectedCourse, currentUser.name);
+    }
+
+    function exportCurrentTeacherPDF() {
+        const selectedCourse = document.getElementById('teacherCourseFilter').value;
+        exportPassportsPDF(selectedCourse, currentUser.name);
+    }
+
+    // 1. SPREADSHEET (CSV) EXPORTS
+    function exportPassportsCSV(courseFilter = 'ALL', teacherFilter = null) {
+        const db = loadData();
+        let targetPassports = [...db.passports];
+
+        if (teacherFilter) targetPassports = targetPassports.filter(p => p.teacher === teacherFilter);
+        if (courseFilter && courseFilter !== 'ALL') targetPassports = targetPassports.filter(p => p.course === courseFilter);
+
+        targetPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+        if (targetPassports.length === 0) return alert('No passport records found to export.');
+
+        let csv = "Student Name,Course,Teacher,Unit Number,Status,Student Reflection,Teacher Feedback\n";
+
+        targetPassports.forEach(p => {
+            p.units.forEach(u => {
+                const cleanRef = `"${(u.reflection || '').replace(/"/g, '""')}"`;
+                const cleanFeed = `"${(u.feedback || '').replace(/"/g, '""')}"`;
+                const status = getPassportStatusLabel(u);
+                csv += `"${p.studentName}","${p.course}","${p.teacher}",Unit ${u.unitNum},"${status}",${cleanRef},${cleanFeed}\n`;
+            });
+        });
+
+        const safeCourseName = courseFilter.replace(/[^a-zA-Z0-9]/g, '_');
+        downloadFile(`Course_Passports_${safeCourseName}.csv`, csv, 'text/csv;charset=utf-8;');
+    }
+
+    function exportSinglePassportCSV(passportId) {
+        const db = loadData();
+        const passport = db.passports.find(p => p.id === passportId);
+        if (!passport) return;
+
+        let csv = "Student Name,Course,Teacher,Unit Number,Status,Student Reflection,Teacher Feedback\n";
+        passport.units.forEach(u => {
+            const cleanRef = `"${(u.reflection || '').replace(/"/g, '""')}"`;
+            const cleanFeed = `"${(u.feedback || '').replace(/"/g, '""')}"`;
+            const status = getPassportStatusLabel(u);
+            csv += `"${passport.studentName}","${passport.course}","${passport.teacher}",Unit ${u.unitNum},"${status}",${cleanRef},${cleanFeed}\n`;
+        });
+
+        const safeStudentName = passport.studentName.replace(/[^a-zA-Z0-9]/g, '_');
+        downloadFile(`Passport_${safeStudentName}_${passport.course}.csv`, csv, 'text/csv;charset=utf-8;');
+    }
+
+    // 2. PRINT / PDF EXPORTS
+    function generatePrintWindow(title, htmlContent) {
+        const win = window.open('', '_blank');
+        win.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>${title}</title>
+                <style>
+                    body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 20px; color: #1e293b; }
+                    .passport-block { page-break-after: always; margin-bottom: 40px; border-bottom: 2px dashed #ccc; padding-bottom: 20px; }
+                    .passport-block:last-child { page-break-after: auto; border: none; }
+                    h2 { margin-bottom: 4px; color: #0f172a; }
+                    .meta { color: #475569; font-size: 0.9rem; margin-bottom: 15px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    th, td { border: 1px solid #94a3b8; padding: 8px; text-align: left; font-size: 0.85rem; }
+                    th { background: #f1f5f9; }
+                    .status-approved { color: #15803d; font-weight: bold; }
+                    .status-revision { color: #b91c1c; font-weight: bold; }
+                    .status-pending { color: #854d0e; font-weight: bold; }
+                    .no-print-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-bottom: 20px; }
+                    @media print { .no-print-btn { display: none; } }
+                </style>
+            </head>
+            <body>
+                <button class="no-print-btn" onclick="window.print()">🖨️ Save as PDF / Print</button>
+                ${htmlContent}
+            </body>
+            </html>
+        `);
+        win.document.close();
+    }
+
+    function exportPassportsPDF(courseFilter = 'ALL', teacherFilter = null) {
+        const db = loadData();
+        let targetPassports = [...db.passports];
+
+        if (teacherFilter) targetPassports = targetPassports.filter(p => p.teacher === teacherFilter);
+        if (courseFilter && courseFilter !== 'ALL') targetPassports = targetPassports.filter(p => p.course === courseFilter);
+
+        targetPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
+
+        if (targetPassports.length === 0) return alert('No passport records found to export.');
+
+        let html = `<h2>Course Passports Summary Report</h2><p class="meta">Generated: ${new Date().toLocaleDateString()} | Total Passports: ${targetPassports.length}</p>`;
+
+        targetPassports.forEach(p => {
+            html += `
+                <div class="passport-block">
+                    <h3>Student: ${p.studentName}</h3>
+                    <div class="meta">Course: <strong>${p.course}</strong> | Teacher: <strong>${p.teacher}</strong></div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th style="width: 8%;">Unit</th>
+                                <th style="width: 17%;">Status</th>
+                                <th style="width: 45%;">Student Reflection</th>
+                                <th style="width: 30%;">Teacher Notes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            p.units.forEach(u => {
+                const status = getPassportStatusLabel(u);
+                let classStatus = '';
+                if (u.approved) classStatus = 'status-approved';
+                else if (u.needsRevision) classStatus = 'status-revision';
+                else if (u.reflection) classStatus = 'status-pending';
+
+                html += `
+                    <tr>
+                        <td>Unit ${u.unitNum}</td>
+                        <td class="${classStatus}">${status}</td>
+                        <td>${u.reflection || '-'}</td>
+                        <td>${u.feedback || '-'}</td>
+                    </tr>
+                `;
+            });
+
+            html += `</tbody></table></div>`;
+        });
+
+        generatePrintWindow(`Passports_${courseFilter}`, html);
+    }
+
+    function exportSinglePassportPDF(passportId) {
+        const db = loadData();
+        const passport = db.passports.find(p => p.id === passportId);
+        if (!passport) return;
+
+        let html = `
+            <div class="passport-block" style="border:none;">
+                <h2>Student Course Passport: ${passport.studentName}</h2>
+                <div class="meta">Course: <strong>${passport.course}</strong> | Teacher: <strong>${passport.teacher}</strong></div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 8%;">Unit</th>
+                            <th style="width: 17%;">Status</th>
+                            <th style="width: 45%;">Student Reflection</th>
+                            <th style="width: 30%;">Teacher Feedback</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+        `;
+
+        passport.units.forEach(u => {
+            const status = getPassportStatusLabel(u);
+            let classStatus = '';
+            if (u.approved) classStatus = 'status-approved';
+            else if (u.needsRevision) classStatus = 'status-revision';
+            else if (u.reflection) classStatus = 'status-pending';
+
+            html += `
+                <tr>
+                    <td>Unit ${u.unitNum}</td>
+                    <td class="${classStatus}">${status}</td>
+                    <td>${u.reflection || '-'}</td>
+                    <td>${u.feedback || '-'}</td>
+                </tr>
+            `;
+        });
+
+        html += `</tbody></table></div>`;
+
+        generatePrintWindow(`Passport_${passport.studentName}`, html);
     }
 
     // MODAL UTILITIES
