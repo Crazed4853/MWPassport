@@ -2,58 +2,160 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Bulk Upload Tester</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Course Passport Application</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 650px; margin: 40px auto; padding: 0 20px; color: #333; }
-    .upload-card { border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 20px; background: #fafafa; }
-    button { padding: 8px 16px; cursor: pointer; margin-top: 10px; background-color: #007bff; color: white; border: none; border-radius: 4px; }
-    button:hover { background-color: #0056b3; }
-    pre { background: #1e1e1e; color: #00ff66; padding: 15px; border-radius: 6px; overflow-x: auto; max-height: 300px; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; background: #f4f6f8; color: #333; }
+    header { background: #1e293b; color: #fff; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+    nav button { background: #334155; color: #fff; border: none; padding: 0.5rem 1rem; margin-left: 0.5rem; border-radius: 4px; cursor: pointer; font-weight: 600; }
+    nav button.active { background: #2563eb; }
+    .container { max-width: 1000px; margin: 2rem auto; padding: 0 1rem; }
+    .card { background: #fff; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+    .view { display: none; }
+    .view.active { display: block; }
+    input, button, select, textarea { width: 100%; padding: 0.6rem; margin-top: 0.5rem; margin-bottom: 1rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    button.action-btn { background: #2563eb; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button.action-btn:hover { background: #1d4ed8; }
+    pre { background: #f1f5f9; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem; }
+    .status-badge { display: inline-block; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #d1fae5; color: #065f46; }
   </style>
 </head>
 <body>
 
-  <h2>Bulk Upload Tester</h2>
+  <header>
+    <h2>Course Passport Portal</h2>
+    <nav>
+      <button id="btn-admin" class="active" onclick="switchView('admin')">Admin View</button>
+      <button id="btn-teacher" onclick="switchView('teacher')">Teacher View</button>
+      <button id="btn-student" onclick="switchView('student')">Student View</button>
+    </nav>
+  </header>
 
-  <!-- Teachers Upload Form -->
-  <div class="upload-card">
-    <h3>1. Bulk Teachers CSV Upload</h3>
-    <form id="teacherForm">
-      <input type="file" id="teacherFile" accept=".csv" required />
-      <br>
-      <button type="submit">Upload Teachers</button>
-    </form>
-  </div>
+  <div class="container">
 
-  <!-- Courses Upload Form -->
-  <div class="upload-card">
-    <h3>2. Bulk Courses CSV Upload</h3>
-    <form id="courseForm">
-      <input type="file" id="courseFile" accept=".csv" required />
-      <br>
-      <button type="submit">Upload Courses</button>
-    </form>
-  </div>
+    <!-- ADMIN VIEW -->
+    <div id="admin-view" class="view active">
+      <h2>Admin Dashboard</h2>
+      
+      <div class="grid">
+        <div class="card">
+          <h3>Bulk Import Teachers</h3>
+          <form id="teacherUploadForm">
+            <input type="file" id="teacherFile" accept=".csv" required />
+            <button type="submit" class="action-btn">Upload Teachers CSV</button>
+          </form>
+        </div>
 
-  <!-- Server Response Output -->
-  <div class="upload-card">
-    <h3>Server Response Log</h3>
-    <pre id="output">Upload a CSV file above to view parsed JSON output...</pre>
+        <div class="card">
+          <h3>Bulk Import Courses</h3>
+          <form id="courseUploadForm">
+            <input type="file" id="courseFile" accept=".csv" required />
+            <button type="submit" class="action-btn">Upload Courses CSV</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Bulk Import Students</h3>
+          <form id="studentUploadForm">
+            <input type="file" id="studentFile" accept=".csv" required />
+            <button type="submit" class="action-btn">Upload Students CSV</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Import Status & Server Response</h3>
+        <pre id="adminOutput">Awaiting upload action...</pre>
+      </div>
+    </div>
+
+    <!-- TEACHER VIEW -->
+    <div id="teacher-view" class="view">
+      <h2>Teacher Sign-Off Dashboard</h2>
+      <div class="card">
+        <h3>Pending Unit Reflections</h3>
+        <div id="teacher-reflection-list">
+          <div style="border-bottom: 1px solid #eee; padding-bottom: 1rem; margin-bottom: 1rem;">
+            <strong>Student:</strong> Alex Johnson (ID: 4321)<br>
+            <strong>Course:</strong> Biology 101 - Unit 2 Reflection<br>
+            <p><em>"I learned how cellular respiration produces ATP through glycolytic pathways."</em></p>
+            <span class="status-badge status-pending">Pending Review</span>
+            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+              <button class="action-btn" style="width: auto; background: #059669;" onclick="alert('Reflection approved and signed off!')">Approve & Sign Off</button>
+              <button class="action-btn" style="width: auto; background: #dc2626;" onclick="alert('Returned for revision.')">Request Revision</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STUDENT VIEW -->
+    <div id="student-view" class="view">
+      <h2>Student Course Passport</h2>
+      
+      <div class="card">
+        <h3>Submit Unit Reflection</h3>
+        <form id="reflectionForm" onsubmit="submitReflection(event)">
+          <label for="courseSelect">Select Course</label>
+          <select id="courseSelect" required>
+            <option value="">-- Select Course --</option>
+            <option value="bio101">Biology 101</option>
+            <option value="eng201">English Literature 201</option>
+          </select>
+
+          <label for="unitName">Unit Name / Number</label>
+          <input type="text" id="unitName" placeholder="e.g., Unit 1: Foundations" required />
+
+          <label for="reflectionText">Reflection</label>
+          <textarea id="reflectionText" rows="4" placeholder="Enter key takeaways and reflections..." required></textarea>
+
+          <button type="submit" class="action-btn">Submit Reflection</button>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>My Passport Progress</h3>
+        <div id="studentProgress">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 0.5rem 0;">
+            <div>
+              <strong>Biology 101 - Unit 1</strong><br>
+              <small>Submitted: Sept 10</small>
+            </div>
+            <span class="status-badge status-approved">Signed Off</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <script>
-    const setupFormHandler = (formId, fileInputId, endpoint) => {
-      document.getElementById(formId).addEventListener('submit', async (e) => {
+    function switchView(role) {
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
+      
+      document.getElementById(role + '-view').classList.add('active');
+      document.getElementById('btn-' + role).classList.add('active');
+    }
+
+    function attachCsvHandler(formId, inputId, endpoint) {
+      const form = document.getElementById(formId);
+      if (!form) return;
+
+      form.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const fileInput = document.getElementById(fileInputId);
-        const output = document.getElementById('output');
+        const fileInput = document.getElementById(inputId);
+        const output = document.getElementById('adminOutput');
 
         if (!fileInput.files[0]) return;
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
 
-        output.textContent = 'Processing upload...';
+        output.textContent = `Processing ${fileInput.files[0].name}...`;
 
         try {
           const response = await fetch(endpoint, {
@@ -61,17 +163,23 @@
             body: formData
           });
 
-          const data = await response.json();
-          output.textContent = JSON.stringify(data, null, 2);
-        } catch (error) {
-          output.textContent = 'Error: ' + error.message;
+          const result = await response.json();
+          output.textContent = JSON.stringify(result, null, 2);
+        } catch (err) {
+          output.textContent = 'Upload error: ' + err.message;
         }
       });
-    };
+    }
 
-    setupFormHandler('teacherForm', 'teacherFile', '/api/bulk-teachers');
-    setupFormHandler('courseForm', 'courseFile', '/api/bulk-courses');
+    attachCsvHandler('teacherUploadForm', 'teacherFile', '/api/bulk-teachers');
+    attachCsvHandler('courseUploadForm', 'courseFile', '/api/bulk-courses');
+    attachCsvHandler('studentUploadForm', 'studentFile', '/api/bulk-students');
+
+    function submitReflection(event) {
+      event.preventDefault();
+      alert('Reflection submitted successfully!');
+      document.getElementById('reflectionForm').reset();
+    }
   </script>
-
 </body>
 </html>
