@@ -42,6 +42,7 @@
         .btn-success:hover { background: #15803d; }
 
         input, select, textarea { width: 100%; padding: 10px; margin: 8px 0 16px; border: 1px solid var(--border); border-radius: 6px; }
+        code { font-family: monospace; background: #e2e8f0; padding: 2px 4px; border-radius: 4px; font-size: 0.8rem; }
         
         /* Login */
         .login-card { max-width: 420px; margin: 60px auto; border-top: 5px solid var(--accent-red); }
@@ -158,8 +159,43 @@
 
         <!-- BULK CSV IMPORT SECTION -->
         <div class="card" style="margin-top:20px;">
-            <h4>Bulk CSV Import</h4>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-top:15px;">
+            <h4 style="margin-bottom:12px; color:var(--primary);">Bulk CSV Import</h4>
+            
+            <!-- CSV FORMAT INSTRUCTION PANEL -->
+            <div style="background: #f8fafc; border: 1px solid var(--border); padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                <h5 style="color: var(--primary); margin-bottom: 6px;">📋 CSV Formatting Guidelines</h5>
+                <p style="font-size: 0.85rem; color: #475569; margin-bottom: 12px;">Ensure your CSV files contain header rows matching the exact column names listed below before uploading:</p>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 15px; font-size: 0.85rem;">
+                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                        <strong style="color:var(--primary);">1. Courses CSV Format</strong>
+                        <p style="color: #64748b; font-size: 0.8rem; margin: 4px 0 8px;">Header required: <code>course</code> or <code>name</code></p>
+                        <pre style="background: #f1f5f9; padding: 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0; overflow-x: auto;">course
+Algebra 101
+World History
+Biology 200</pre>
+                    </div>
+
+                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                        <strong style="color:var(--primary);">2. Teachers CSV Format</strong>
+                        <p style="color: #64748b; font-size: 0.8rem; margin: 4px 0 8px;">Headers: <code>name</code>, <code>username</code>, <code>password</code></p>
+                        <pre style="background: #f1f5f9; padding: 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0; overflow-x: auto;">name,username,password
+Mr. Smith,Smith,teacher123
+Ms. Johnson,Johnson,teacher123</pre>
+                    </div>
+
+                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #cbd5e1;">
+                        <strong style="color:var(--primary);">3. Students CSV Format</strong>
+                        <p style="color: #64748b; font-size: 0.8rem; margin: 4px 0 8px;">Headers: <code>firstName</code>, <code>lastName</code>, <code>studentNum</code>, <code>password</code></p>
+                        <pre style="background: #f1f5f9; padding: 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #e2e8f0; overflow-x: auto;">firstName,lastName,studentNum,password
+Jane,Doe,1002345,2345
+Alex,Lee,8809876,9876</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CSV UPLOAD CONTROLS -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
                 <div>
                     <label><strong>Upload Courses CSV</strong></label>
                     <input type="file" id="csvCourses" accept=".csv">
@@ -771,7 +807,6 @@
         }
         adviseeHeaderTr.innerHTML = adviseeHeaderHtml;
 
-        // Find all students who have assigned this teacher as their TA
         const myAdvisees = db.students.filter(s => s.teacherAdvisorId === currentUser.id);
         const myAdviseeIds = myAdvisees.map(s => s.id);
         const adviseePassports = db.passports.filter(p => myAdviseeIds.includes(p.studentId));
@@ -830,7 +865,6 @@
         document.getElementById('reviewText').innerText = unit.reflection || "(No reflection text)";
         document.getElementById('teacherFeedback').value = unit.feedback || "";
 
-        // Sign-off capability check: Course Teacher or Admin can sign off. Advisors view-only unless they teach the course.
         const isCourseTeacher = (currentUser && currentUser.role === 'teacher' && passport.teacher === currentUser.name) || (currentUser && currentUser.role === 'admin');
 
         const actionButtons = document.getElementById('reviewActionButtons');
@@ -945,7 +979,6 @@
         const activeStudent = getActiveStudent();
         if (!activeStudent) return;
 
-        // Populate Teacher Advisor Dropdown
         const taSelect = document.getElementById('studentTASelect');
         taSelect.innerHTML = '<option value="">-- Select Teacher Advisor --</option>' + 
             db.teachers.map(t => `<option value="${t.id}" ${t.id === activeStudent.teacherAdvisorId ? 'selected' : ''}>${t.name}</option>`).join('');
