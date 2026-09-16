@@ -7,7 +7,6 @@ const path = require('path');
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper to stream CSV using native Node.js Readable stream
 const parseCSVFromBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const results = [];
@@ -19,12 +18,12 @@ const parseCSVFromBuffer = (buffer) => {
   });
 };
 
-// Serve static files
+// Serve static assets from root directory
 app.use(express.static(__dirname));
 
-// Send index.html on root page access
+// Serve index.html on root route with absolute path resolution
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.resolve(__dirname, 'index.html'));
 });
 
 // Bulk Teachers Upload Route
