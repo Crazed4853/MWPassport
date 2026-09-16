@@ -1,16 +1,17 @@
 const express = require('express');
 const multer = require('multer');
 const csv = require('csv-parser');
-const fs = require('fs');
+const { Readable } = require('stream');
+const path = require('path');
 
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ storage: multer.memoryStorage() });
 
-// Helper to stream and parse CSV files locally
-const parseCSV = (filePath) => {
+// Helper to stream CSV using native Node.js Readable stream
+const parseCSVFromBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const results = [];
-    fs.createReadStream(filePath)
+    Readable.from(buffer)
       .pipe(csv())
       .on('data', (data) => results.push(data))
       .on('end', () => resolve(results))
@@ -18,19 +19,22 @@ const parseCSV = (filePath) => {
   });
 };
 
+// Serve static files
+app.use(express.static(__dirname));
+
+// Send index.html on root page access
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Bulk Teachers Upload Route
 app.post('/api/bulk-teachers', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   try {
-    const data = await parseCSV(req.file.path);
-    console.log('\n--- Parsed Teachers CSV ---');
-    console.table(data);
-
-    fs.unlinkSync(req.file.path); // Remove temp file after parsing
+    const data = await parseCSVFromBuffer(req.file.buffer);
     return res.json({ status: 'Success', rowsImported: data.length, data });
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     return res.status(500).json({ error: 'Failed to process CSV', details: err.message });
   }
 });
@@ -40,18 +44,14 @@ app.post('/api/bulk-courses', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
   try {
-    const data = await parseCSV(req.file.path);
-    console.log('\n--- Parsed Courses CSV ---');
-    console.table(data);
-
-    fs.unlinkSync(req.file.path);
+    const data = await parseCSVFromBuffer(req.file.buffer);
     return res.json({ status: 'Success', rowsImported: data.length, data });
   } catch (err) {
-    if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     return res.status(500).json({ error: 'Failed to process CSV', details: err.message });
   }
 });
 
-app.listen(3000, () => {
-  console.log('Local CSV server listening on http://localhost:3000');
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
