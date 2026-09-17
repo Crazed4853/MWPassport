@@ -53,29 +53,34 @@ initDB().catch(console.error);
 
 // Helper to parse CSV buffer
 const parseCSVFromBuffer = (buffer) => {
-  return new Promise((resolve, reject) => {
-    const results = [];
-    
-    // Convert buffer to UTF-8 text and strip Excel Byte Order Mark (BOM)
-    let text = buffer.toString('utf8');
-    if (text.charCodeAt(0) === 0xFEFF) {
-      text = text.slice(1);
-    }
+  // Convert buffer to text and remove UTF-8 BOM
+  let text = buffer.toString('utf8').replace(/^\uFEFF/, '').trim();
+  if (!text) throw new Error('CSV file is empty');
 
-    streamifier.createReadStream(Buffer.from(text))
-      .pipe(csv({
-        // Trim whitespace and hidden BOM characters from header names
-        mapHeaders: ({ header }) => header ? header.trim().replace(/^[\uFEFF\xFF\xFE]/, '') : null,
-        // Trim whitespace from values
-        mapValues: ({ value }) => value ? value.trim() : ''
-      }))
-      .on('data', (data) => results.push(data))
-      .on('end', () => resolve(results))
-      .on('error', (err) => {
-        console.error('CSV Parsing Stream Error:', err);
-        reject(err);
-      });
-  });
+  // Auto-detect delimiter (comma, semicolon, or tab)
+  const firstLine = text.split(/\r?\n/)[0];
+  let delimiter = ',';
+  if (firstLine.includes(';') && !firstLine.includes(',')) delimiter = ';';
+  if (firstLine.includes('\t') && !firstLine.includes(',')) delimiter = '\t';
+
+  // Split lines while handling CRLF and LF line endings
+  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length < 2) throw new Error('CSV must contain a header row and at least one data row');
+
+  // Clean headers (remove surrounding quotes and whitespace)
+  const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^["']|["']$/g, ''));
+  const results = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const values = lines[i].split(delimiter).map(v => v.trim().replace(/^["']|["']$/g, ''));
+    const row = {};
+    headers.forEach((header, index) => {
+      if (header) row[header] = values[index] || '';
+    });
+    results.push(row);
+  }
+
+  return results;
 };
 
 // --- AUTHENTICATION & FULL DATA FETCH ---
