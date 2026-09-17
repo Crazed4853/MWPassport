@@ -487,16 +487,40 @@ Alex,Lee,8809876,9876</pre>
         ]
     };
 
-    function loadData() {
-        if (!localStorage.getItem('appData')) {
-            localStorage.setItem('appData', JSON.stringify(defaultData));
-        }
-        return JSON.parse(localStorage.getItem('appData'));
-    }
+let dbCache = { courses: [], teachers: [], students: [], passports: [] };
 
-    function saveData(data) {
-        localStorage.setItem('appData', JSON.stringify(data));
+// Fetch fresh data from backend PostgreSQL database
+async function loadData() {
+    try {
+        const res = await fetch('/api/data');
+        dbCache = await res.json();
+        return dbCache;
+    } catch (err) {
+        console.error("Database sync failed", err);
+        return dbCache;
     }
+}
+
+// Server login request
+async function login() {
+    const uInput = document.getElementById('username').value.trim();
+    const pInput = document.getElementById('password').value.trim();
+
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: uInput, password: pInput })
+        });
+        
+        if (!res.ok) throw new Error('Invalid credentials');
+        currentUser = await res.json();
+        await loadData();
+        showDashboard();
+    } catch (err) {
+        alert(err.message);
+    }
+}
 
     let currentUser = null;
     let impersonatedStudent = null;
