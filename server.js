@@ -55,11 +55,26 @@ initDB().catch(console.error);
 const parseCSVFromBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const results = [];
-    streamifier.createReadStream(buffer)
-      .pipe(csv())
+    
+    // Convert buffer to UTF-8 text and strip Excel Byte Order Mark (BOM)
+    let text = buffer.toString('utf8');
+    if (text.charCodeAt(0) === 0xFEFF) {
+      text = text.slice(1);
+    }
+
+    streamifier.createReadStream(Buffer.from(text))
+      .pipe(csv({
+        // Trim whitespace and hidden BOM characters from header names
+        mapHeaders: ({ header }) => header ? header.trim().replace(/^[\uFEFF\xFF\xFE]/, '') : null,
+        // Trim whitespace from values
+        mapValues: ({ value }) => value ? value.trim() : ''
+      }))
       .on('data', (data) => results.push(data))
       .on('end', () => resolve(results))
-      .on('error', (err) => reject(err));
+      .on('error', (err) => {
+        console.error('CSV Parsing Stream Error:', err);
+        reject(err);
+      });
   });
 };
 
