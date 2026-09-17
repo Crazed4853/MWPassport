@@ -137,7 +137,25 @@ app.post('/api/bulk-teachers', upload.single('file'), async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/bulk-courses', upload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
+  try {
+    const data = await parseCSVFromBuffer(req.file.buffer);
+    for (let item of data) {
+      const courseName = item.course || item.Course || item.name || Object.values(item)[0];
+      if (courseName) {
+        await pool.query(
+          'INSERT INTO courses (name) VALUES ($1) ON CONFLICT (name) DO NOTHING',
+          [courseName]
+        );
+      }
+    }
+    return res.json({ status: 'Success', count: data.length, data });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to process CSV', details: err.message });
+  }
+});
 // PASSPORT SAVE / UPDATE ENDPOINT
 app.post('/api/passports', async (req, res) => {
   const { id, studentId, studentName, course, teacher, deleteRequested, units } = req.body;
