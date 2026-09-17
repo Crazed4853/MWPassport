@@ -11,6 +11,7 @@ const { pool, initDb, hashPassword, verifyPassword, withTransaction } = require(
 const app = express();
 const isProduction = process.env.NODE_ENV === 'production' || Boolean(process.env.RENDER);
 const UNIT_COUNT = 16;
+const MAX_PASSPORTS_PER_STUDENT = 32; // most passports one student can have at the same time
 
 // ===========================================================================
 // Middleware
@@ -409,7 +410,13 @@ app.get('/api/students/:id/dashboard', anyUser, wrap(async (req, res) => {
     pool.query('SELECT id, name FROM courses ORDER BY name'),
   ]);
 
-  res.json({ student: toStudent(rows[0]), passports, teachers: teachers.rows, courses: courses.rows });
+  res.json({
+    student: toStudent(rows[0]),
+    passports,
+    teachers: teachers.rows,
+    courses: courses.rows,
+    maxPassports: MAX_PASSPORTS_PER_STUDENT,
+  });
 }));
 
 app.put('/api/students/:id/password', anyUser, wrap(async (req, res) => {
@@ -495,6 +502,21 @@ app.post('/api/students/:id/passports', anyUser, wrap(async (req, res) => {
 
   try {
     const passportId = await withTransaction(async (client) => {
+      // Lock the student's row so two requests at the same moment can't both slip past the limit
+      const student = await client.query('SELECT id FROM students WHERE id = $1 FOR UPDATE', [studentId]);
+      if (!student.rows[0]) throw new HttpError(404, 'Student not found.');
+
+      const { rows: countRows } = await client.query(
+        'SELECT COUNT(*)::int AS count FROM passports WHERE student_id = $1', [studentId]
+      );
+      if (countRows[0].count >= MAX_PASSPORTS_PER_STUDENT) {
+        throw new HttpError(
+          409,
+          `This student already has the maximum of ${MAX_PASSPORTS_PER_STUDENT} passports. ` +
+          'A passport must be deleted before a new one can be created.'
+        );
+      }
+
       const { rows } = await client.query(
         'INSERT INTO passports (student_id, course_id, teacher_id) VALUES ($1, $2, $3) RETURNING id',
         [studentId, courseId, teacherId]
