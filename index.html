@@ -353,7 +353,10 @@ Alex,Lee,8809876,9876</pre>
 
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
             <h3 style="color:var(--primary);" id="studentPassportHeading">My Course Attendance & Participation Passports</h3>
-            <button class="btn" onclick="openModal('createPassportModal')">+ New Passport</button>
+            <div style="display:flex; align-items:center; gap:12px;">
+                <span id="passportCountLabel" style="font-size:0.85rem; color:#64748b;"></span>
+                <button class="btn" id="newPassportBtn" onclick="openNewPassportModal()">+ New Passport</button>
+            </div>
         </div>
         <div id="studentPassports" class="passport-grid"></div>
     </div>
@@ -437,6 +440,8 @@ Alex,Lee,8809876,9876</pre>
     let activePassportId = null;
     let activeUnitNum = null;
     let reviewPassportCache = {};     // passports shown in the teacher matrices, keyed by id
+    let passportLimit = 32;           // updated from the server when the student view loads
+    let activePassportCount = 0;
 
     // ---------- HELPERS ----------
     function esc(value) {
@@ -906,7 +911,7 @@ Alex,Lee,8809876,9876</pre>
         const studentId = getActiveStudentId();
         if (!studentId) return;
 
-        const { student, passports, teachers, courses } = await api('GET', `/api/students/${studentId}/dashboard`);
+        const { student, passports, teachers, courses, maxPassports } = await api('GET', `/api/students/${studentId}/dashboard`);
 
         if (impersonatedStudentId) {
             document.getElementById('impersonatedStudentName').innerText =
@@ -953,6 +958,20 @@ Alex,Lee,8809876,9876</pre>
             ? `${student.firstName}'s Course Passports`
             : 'My Course Attendance & Participation Passports';
 
+        // Passport limit
+        passportLimit = maxPassports;
+        activePassportCount = passports.length;
+        const atLimit = passports.length >= maxPassports;
+        const countLabel = document.getElementById('passportCountLabel');
+        countLabel.innerText = `${passports.length} / ${maxPassports} passports`;
+        countLabel.style.color = atLimit ? 'var(--accent-red)' : '#64748b';
+        countLabel.style.fontWeight = atLimit ? 'bold' : 'normal';
+        const newBtn = document.getElementById('newPassportBtn');
+        newBtn.disabled = atLimit;
+        newBtn.style.opacity = atLimit ? '0.5' : '1';
+        newBtn.style.cursor = atLimit ? 'not-allowed' : 'pointer';
+        newBtn.title = atLimit ? `Maximum of ${maxPassports} passports reached. Delete a passport to create a new one.` : '';
+
         const container = document.getElementById('studentPassports');
         container.innerHTML = passports.length === 0
             ? `<p>No course attendance and participation passports created yet. Click "+ New Passport" above to start.</p>`
@@ -974,6 +993,13 @@ Alex,Lee,8809876,9876</pre>
         document.getElementById('passportTeacherSelect').innerHTML = teachers.length
             ? teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')
             : '<option value="">No teachers available</option>';
+    }
+
+    function openNewPassportModal() {
+        if (activePassportCount >= passportLimit) {
+            return alert(`The maximum of ${passportLimit} passports has been reached. A passport must be deleted (with teacher approval) before a new one can be created.`);
+        }
+        openModal('createPassportModal');
     }
 
     async function createPassport() {
