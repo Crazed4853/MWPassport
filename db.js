@@ -128,8 +128,54 @@ CREATE TABLE IF NOT EXISTS passport_units (
 );
 `;
 
+// Columns each app table must have. Used to detect leftover tables from an
+// older version of the app that have the same name but a different layout.
+const REQUIRED_COLUMNS = {
+  admins: ['id', 'username', 'password_hash'],
+  teachers: ['id', 'name', 'username', 'password_hash'],
+  courses: ['id', 'name'],
+  students: ['id', 'first_name', 'last_name', 'student_num', 'password_hash', 'teacher_advisor_id', 'pending_teacher_advisor_id'],
+  passports: ['id', 'student_id', 'course_id', 'teacher_id', 'delete_requested'],
+  passport_units: ['passport_id', 'unit_num', 'reflection', 'approved', 'needs_revision', 'feedback'],
+};
+
+// If any existing table doesn't match, rename ALL existing app tables to
+// old_<name>_<timestamp> (nothing is deleted) so a clean set can be created.
+async function setAsideOldTables(client) {
+  const { rows } = await client.query(
+    `SELECT table_name, column_name
+       FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = ANY($1)`,
+    [Object.keys(REQUIRED_COLUMNS)]
+  );
+
+  const existing = {};
+  for (const { table_name, column_name } of rows) {
+    (existing[table_name] = existing[table_name] || new Set()).add(column_name);
+  }
+
+  const mismatched = Object.keys(existing).filter((table) =>
+    REQUIRED_COLUMNS[table].some((column) => !existing[table].has(column))
+  );
+  if (mismatched.length === 0) return;
+
+  const suffix = new Date().toISOString().slice(0, 19).replace(/\D/g, '');
+  for (const table of Object.keys(existing)) {
+    // Table names come from the fixed list above, never from user input
+    await client.query(`ALTER TABLE ${table} RENAME TO old_${table}_${suffix}`);
+  }
+  console.warn(
+    `*** Found older tables with a different layout (${mismatched.join(', ')}). ` +
+    `Renamed existing tables [${Object.keys(existing).join(', ')}] with the prefix "old_" and suffix "_${suffix}". ` +
+    'No data was deleted. New tables have been created. ***'
+  );
+}
+
 async function initDb() {
-  await pool.query(SCHEMA_SQL);
+  await withTransaction(async (client) => {
+    await setAsideOldTables(client);
+    await client.query(SCHEMA_SQL);
+  });
 
   // Admin account: ADMIN_USERNAME / ADMIN_PASSWORD environment variables are the
   // source of truth. Changing ADMIN_PASSWORD in Render and redeploying resets it.
