@@ -110,14 +110,12 @@
             <p style="font-size:0.8rem; color:#64748b; margin-top:4px;">Course Attendance and Participation Passport Portal</p>
         </div>
         <p style="font-size:0.85rem; color:#64748b; margin-bottom:15px; background:#f1f5f9; padding:8px; border-radius:4px;">
-            Admin: <b>admin / admin</b><br>
-            Teacher: <b>Smith / teacher123</b><br>
-            Student: <b>Doe / 2345</b>
+            Students: use your last name (or student number) and your password. New student passwords are the last 4 digits of your student number.
         </p>
-        <label>Username (Last Name)</label>
-        <input type="text" id="username" placeholder="e.g., Doe or admin">
-        <label>Password (Last 4 digits of Student # or set password)</label>
-        <input type="password" id="password" placeholder="e.g., 2345">
+        <label>Username</label>
+        <input type="text" id="username" placeholder="e.g., Doe" autocomplete="username">
+        <label>Password</label>
+        <input type="password" id="password" placeholder="Password" autocomplete="current-password">
         <button class="btn" style="width:100%; margin-top:5px;" onclick="login()">Log In</button>
     </div>
 
@@ -427,567 +425,375 @@ Alex,Lee,8809876,9876</pre>
 </div>
 
 <script>
-    // INITIAL MOCK DATA STORAGE
-    const defaultData = {
-        courses: ["Algebra 101", "World History", "Biology 200"],
-        teachers: [
-            { id: "t1", name: "Mr. Smith", username: "Smith", password: "teacher123" },
-            { id: "t2", name: "Ms. Johnson", username: "Johnson", password: "teacher123" }
-        ],
-        students: [
-            { id: "s1", firstName: "Jane", lastName: "Doe", studentNum: "1002345", password: "2345", teacherAdvisorId: "t1", pendingTeacherAdvisorId: "" },
-            { id: "s2", firstName: "Alex", lastName: "Lee", studentNum: "8809876", password: "9876", teacherAdvisorId: "t1", pendingTeacherAdvisorId: "" }
-        ],
-        passports: [
-            {
-                id: "p1",
-                studentId: "s1",
-                studentName: "Doe, Jane",
-                course: "Algebra 101",
-                teacher: "Mr. Smith",
-                deleteRequested: false,
-                units: Array.from({ length: 16 }, (_, i) => ({
-                    unitNum: i + 1,
-                    reflection: i === 0 ? "I actively participated in working through unit 1 equations and maintained perfect attendance." : "",
-                    approved: false,
-                    needsRevision: false,
-                    feedback: ""
-                }))
-            },
-            {
-                id: "p2",
-                studentId: "s2",
-                studentName: "Lee, Alex",
-                course: "Algebra 101",
-                teacher: "Mr. Smith",
-                deleteRequested: false,
-                units: Array.from({ length: 16 }, (_, i) => ({
-                    unitNum: i + 1,
-                    reflection: i === 0 ? "Understood key concepts quickly and attended all lab seminars." : "",
-                    approved: true,
-                    needsRevision: false,
-                    feedback: "Great attendance and active participation!"
-                }))
-            },
-            {
-                id: "p3",
-                studentId: "s1",
-                studentName: "Doe, Jane",
-                course: "World History",
-                teacher: "Ms. Johnson",
-                deleteRequested: false,
-                units: Array.from({ length: 16 }, (_, i) => ({
-                    unitNum: i + 1,
-                    reflection: i === 0 ? "Submitted all unit reflections and led class discussion." : "",
-                    approved: true,
-                    needsRevision: false,
-                    feedback: "Excellent participation!"
-                }))
-            }
-        ]
-    };
+    // =====================================================================
+    //  All data now lives in the PostgreSQL database on Render.
+    //  This page talks to server.js through the /api/... endpoints.
+    // =====================================================================
+    const UNIT_COUNT = 16;
+    const SESSION_EXPIRED = 'SESSION_EXPIRED';
 
-let dbCache = { courses: [], teachers: [], students: [], passports: [] };
-
-// Fetch fresh data from backend PostgreSQL database
-async function loadData() {
-    try {
-        const res = await fetch('/api/data');
-        dbCache = await res.json();
-        return dbCache;
-    } catch (err) {
-        console.error("Database sync failed", err);
-        return dbCache;
-    }
-}
-
-// Server login request
-async function login() {
-    const uInput = document.getElementById('username').value.trim();
-    const pInput = document.getElementById('password').value.trim();
-
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: uInput, password: pInput })
-        });
-        
-        if (!res.ok) throw new Error('Invalid credentials');
-        currentUser = await res.json();
-        await loadData();
-        showDashboard();
-    } catch (err) {
-        alert(err.message);
-    }
-}
-
-    let currentUser = null;
-    let impersonatedStudent = null;
+    let currentUser = null;           // { role, id, name, ... } from the server
+    let impersonatedStudentId = null; // set while an admin/teacher assists a student
     let activePassportId = null;
-    let activeUnitIndex = null;
+    let activeUnitNum = null;
+    let reviewPassportCache = {};     // passports shown in the teacher matrices, keyed by id
 
-    function getActiveStudent() {
-        return impersonatedStudent || (currentUser && currentUser.role === 'student' ? currentUser : null);
+    // ---------- HELPERS ----------
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, ch => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[ch]));
     }
 
-    // LOGIN SYSTEM
-    function login() {
-        const uInput = document.getElementById('username').value.trim();
-        const pInput = document.getElementById('password').value.trim();
-        const db = loadData();
-
-        if (uInput.toLowerCase() === 'admin' && pInput === 'admin') {
-            currentUser = { role: 'admin', name: 'Administrator' };
-            showDashboard();
-            return;
+    async function api(method, url, body) {
+        const options = { method, headers: {}, credentials: 'same-origin' };
+        if (body instanceof FormData) {
+            options.body = body;
+        } else if (body !== undefined) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
         }
 
-        const teacher = db.teachers.find(t => t.username.toLowerCase() === uInput.toLowerCase() && t.password === pInput);
-        if (teacher) {
-            currentUser = { role: 'teacher', ...teacher };
-            showDashboard();
-            return;
+        const res = await fetch(url, options);
+        let data = null;
+        try { data = await res.json(); } catch (_) { /* empty response */ }
+
+        if (res.status === 401 && currentUser) {
+            alert('Your session has ended. Please log in again.');
+            showLoginScreen();
+            throw new Error(SESSION_EXPIRED);
         }
-
-        const student = db.students.find(s => {
-            const effectivePass = s.password || s.studentNum.slice(-4);
-            return s.lastName.toLowerCase() === uInput.toLowerCase() && effectivePass === pInput;
-        });
-
-        if (student) {
-            currentUser = { role: 'student', ...student };
-            showDashboard();
-            return;
-        }
-
-        alert('Invalid credentials. Please check details.');
+        if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+        return data;
     }
 
-    function logout() {
+    // Any error from a button's async handler is shown as an alert
+    window.addEventListener('unhandledrejection', (event) => {
+        const message = event.reason && event.reason.message;
+        if (message && message !== SESSION_EXPIRED) alert(message);
+    });
+
+    function getActiveStudentId() {
+        if (impersonatedStudentId) return impersonatedStudentId;
+        return currentUser && currentUser.role === 'student' ? currentUser.id : null;
+    }
+
+    function unitStatus(unit) {
+        if (unit.approved) return 'approved';
+        if (unit.needsRevision) return 'revision';
+        if (unit.reflection && unit.reflection.trim() !== '') return 'pending';
+        return 'empty';
+    }
+
+    // ---------- LOGIN SYSTEM ----------
+    async function login() {
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value.trim();
+        if (!username || !password) return alert('Please enter your username and password.');
+
+        try {
+            const { user } = await api('POST', '/api/login', { username, password });
+            currentUser = user;
+            document.getElementById('password').value = '';
+            await showDashboard();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    async function logout() {
         currentUser = null;
-        impersonatedStudent = null;
+        try { await api('POST', '/api/logout'); } catch (_) { /* already logged out */ }
+        showLoginScreen();
+    }
+
+    function showLoginScreen() {
+        currentUser = null;
+        impersonatedStudentId = null;
+        activePassportId = null;
+        reviewPassportCache = {};
+        ['adminView', 'teacherView', 'studentView', 'userInfo', 'impersonationBanner']
+            .forEach(id => document.getElementById(id).style.display = 'none');
+        document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
         document.getElementById('loginView').style.display = 'block';
-        document.getElementById('adminView').style.display = 'none';
-        document.getElementById('teacherView').style.display = 'none';
-        document.getElementById('studentView').style.display = 'none';
-        document.getElementById('userInfo').style.display = 'none';
         document.getElementById('username').value = '';
         document.getElementById('password').value = '';
     }
 
-    function showDashboard() {
-        impersonatedStudent = null;
+    async function showDashboard() {
+        impersonatedStudentId = null;
+        document.getElementById('impersonationBanner').style.display = 'none';
         document.getElementById('loginView').style.display = 'none';
         document.getElementById('userInfo').style.display = 'block';
-        document.getElementById('userGreeting').innerText = `Logged in as: ${currentUser.name || currentUser.lastName + ' (' + currentUser.role + ')'}`;
 
-        if (currentUser.role === 'admin') {
-            document.getElementById('adminView').style.display = 'block';
-            document.getElementById('teacherView').style.display = 'none';
-            document.getElementById('studentView').style.display = 'none';
-            renderAdminLists();
-        } else if (currentUser.role === 'teacher') {
-            document.getElementById('teacherView').style.display = 'block';
-            document.getElementById('adminView').style.display = 'none';
-            document.getElementById('studentView').style.display = 'none';
-            renderTeacherView();
-        } else if (currentUser.role === 'student') {
-            document.getElementById('studentView').style.display = 'block';
-            document.getElementById('adminView').style.display = 'none';
-            document.getElementById('teacherView').style.display = 'none';
-            renderStudentView();
-        }
+        const roleLabel = { admin: 'Admin', teacher: 'Teacher', student: 'Student' }[currentUser.role];
+        document.getElementById('userGreeting').innerText = `Logged in as: ${currentUser.name} (${roleLabel})`;
+
+        document.getElementById('adminView').style.display = currentUser.role === 'admin' ? 'block' : 'none';
+        document.getElementById('teacherView').style.display = currentUser.role === 'teacher' ? 'block' : 'none';
+        document.getElementById('studentView').style.display = currentUser.role === 'student' ? 'block' : 'none';
+
+        if (currentUser.role === 'admin') await renderAdminLists();
+        else if (currentUser.role === 'teacher') await renderTeacherView();
+        else if (currentUser.role === 'student') await renderStudentView();
     }
 
-    // ADMIN MANAGEMENT
-    function deleteAllPassports() {
+    // ---------- ADMIN MANAGEMENT ----------
+    async function deleteAllPassports() {
         const confirmed = confirm("Are you sure you want to delete ALL passports for end of year rollover? You cannot undo this action.");
-        if (confirmed) {
-            const db = loadData();
-            db.passports = [];
-            saveData(db);
-            alert("All passports have been successfully deleted for end of year rollover.");
-        }
+        if (!confirmed) return;
+        const result = await api('DELETE', '/api/passports');
+        alert(`All passports (${result.deleted}) have been deleted for end of year rollover.`);
     }
 
-    function renderAdminLists() {
-        const db = loadData();
-        document.getElementById('courseList').innerHTML = db.courses.map((c, i) => `
-            <li><span>${c}</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeCourse(${i})">Remove</button></li>
-        `).join('');
+    async function renderAdminLists() {
+        const [courses, teachers, students] = await Promise.all([
+            api('GET', '/api/courses'),
+            api('GET', '/api/teachers'),
+            api('GET', '/api/students')
+        ]);
+        const smallBtn = 'style="padding:2px 8px; font-size:0.75rem;"';
+        const emptyItem = (label) => `<li style="color:#64748b; font-style:italic;">No ${label} yet.</li>`;
 
-        document.getElementById('teacherList').innerHTML = db.teachers.map(t => `
-            <li><span>${t.name} (User: ${t.username})</span><button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeTeacher('${t.id}')">Remove</button></li>
-        `).join('');
+        document.getElementById('courseList').innerHTML = courses.length ? courses.map(c => `
+            <li><span>${esc(c.name)}</span><button class="btn btn-danger" ${smallBtn} onclick="removeCourse(${c.id})">Remove</button></li>
+        `).join('') : emptyItem('courses');
 
-        document.getElementById('studentList').innerHTML = db.students.map(s => {
-            const ta = db.teachers.find(t => t.id === s.teacherAdvisorId);
-            const taLabel = ta ? ` - TA: ${ta.name}` : ' - TA: None';
-            return `
-                <li>
-                    <span>${s.lastName}, ${s.firstName} (${s.studentNum})${taLabel}</span>
-                    <div style="display:flex; gap:4px;">
-                        <button class="btn" style="padding:2px 8px; font-size:0.75rem;" onclick="assistStudent('${s.id}')">Manage Passports</button>
-                        <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="removeStudent('${s.id}')">Remove</button>
-                    </div>
-                </li>
-            `;
-        }).join('');
+        document.getElementById('teacherList').innerHTML = teachers.length ? teachers.map(t => `
+            <li><span>${esc(t.name)} (User: ${esc(t.username)})</span><button class="btn btn-danger" ${smallBtn} onclick="removeTeacher(${t.id})">Remove</button></li>
+        `).join('') : emptyItem('teachers');
+
+        document.getElementById('studentList').innerHTML = students.length ? students.map(s => `
+            <li>
+                <span>${esc(s.lastName)}, ${esc(s.firstName)} (${esc(s.studentNum)}) - TA: ${esc(s.teacherAdvisorName || 'None')}</span>
+                <div style="display:flex; gap:4px;">
+                    <button class="btn" ${smallBtn} onclick="assistStudent(${s.id})">Manage Passports</button>
+                    <button class="btn btn-danger" ${smallBtn} onclick="removeStudent(${s.id})">Remove</button>
+                </div>
+            </li>
+        `).join('') : emptyItem('students');
     }
 
-    function addCourse() {
+    async function addCourse() {
         const name = document.getElementById('adminCourseName').value.trim();
-        if (!name) return;
-        const db = loadData();
-        db.courses.push(name);
-        saveData(db);
+        if (!name) return alert('Please enter a course name.');
+        await api('POST', '/api/courses', { name });
         document.getElementById('adminCourseName').value = '';
-        renderAdminLists();
+        await renderAdminLists();
     }
 
-    function removeCourse(index) {
+    async function removeCourse(id) {
         if (!confirm('Are you sure you want to remove this course?')) return;
-        const db = loadData();
-        db.courses.splice(index, 1);
-        saveData(db);
-        renderAdminLists();
+        await api('DELETE', `/api/courses/${id}`);
+        await renderAdminLists();
     }
 
-    function addTeacher() {
+    async function addTeacher() {
         const name = document.getElementById('adminTeacherName').value.trim();
         const username = document.getElementById('adminTeacherUsername').value.trim();
         const password = document.getElementById('adminTeacherPassword').value.trim() || 'teacher123';
-        if (!name || !username) return;
-        
-        const db = loadData();
-        db.teachers.push({ id: 't_' + Date.now(), name, username, password });
-        saveData(db);
-        
+        if (!name || !username) return alert('Please enter the teacher name and username.');
+
+        await api('POST', '/api/teachers', { name, username, password });
         document.getElementById('adminTeacherName').value = '';
         document.getElementById('adminTeacherUsername').value = '';
         document.getElementById('adminTeacherPassword').value = '';
-        renderAdminLists();
+        await renderAdminLists();
     }
 
-    function removeTeacher(id) {
+    async function removeTeacher(id) {
         if (!confirm('Are you sure you want to remove this teacher?')) return;
-        const db = loadData();
-        db.teachers = db.teachers.filter(t => t.id !== id);
-        saveData(db);
-        renderAdminLists();
+        await api('DELETE', `/api/teachers/${id}`);
+        await renderAdminLists();
     }
 
-    function addStudent() {
-        const first = document.getElementById('adminStudentFirst').value.trim();
-        const last = document.getElementById('adminStudentLast').value.trim();
-        const num = document.getElementById('adminStudentNum').value.trim();
-        if (!first || !last || !num) return;
-        
-        const db = loadData();
-        db.students.push({ id: 's_' + Date.now(), firstName: first, lastName: last, studentNum: num, password: num.slice(-4), teacherAdvisorId: "", pendingTeacherAdvisorId: "" });
-        saveData(db);
-        
+    async function addStudent() {
+        const firstName = document.getElementById('adminStudentFirst').value.trim();
+        const lastName = document.getElementById('adminStudentLast').value.trim();
+        const studentNum = document.getElementById('adminStudentNum').value.trim();
+        if (!firstName || !lastName || !studentNum) return alert('Please fill in first name, last name and student number.');
+
+        await api('POST', '/api/students', { firstName, lastName, studentNum });
         document.getElementById('adminStudentFirst').value = '';
         document.getElementById('adminStudentLast').value = '';
         document.getElementById('adminStudentNum').value = '';
-        renderAdminLists();
+        await renderAdminLists();
     }
 
-    function removeStudent(id) {
-        if (!confirm('Are you sure you want to remove this student?')) return;
-        const db = loadData();
-        db.students = db.students.filter(s => s.id !== id);
-        saveData(db);
-        renderAdminLists();
+    async function removeStudent(id) {
+        if (!confirm('Are you sure you want to remove this student? Their passports will also be deleted.')) return;
+        await api('DELETE', `/api/students/${id}`);
+        await renderAdminLists();
     }
 
-    async function uploadCSV(endpoint, inputId, entityType) {
+    async function uploadCSV(endpoint, inputId) {
         const input = document.getElementById(inputId);
         const output = document.getElementById('csvOutput');
-
-        if (!input.files[0]) {
-            alert('Please select a CSV file first.');
-            return;
-        }
+        if (!input.files[0]) return alert('Please select a CSV file first.');
 
         const formData = new FormData();
         formData.append('file', input.files[0]);
 
         output.style.display = 'block';
-        output.textContent = 'Uploading and processing CSV...';
+        output.textContent = 'Uploading and saving to the database...';
 
         try {
-            const res = await fetch(endpoint, { method: 'POST', body: formData });
-            const result = await res.json();
-
-            if (result.status === 'Success' && Array.isArray(result.data)) {
-                output.textContent = `Success! Processed ${result.count} records.`;
-                const db = loadData();
-
-                result.data.forEach(item => {
-                    if (entityType === 'courses') {
-                        const courseName = item.course || item.Course || item.name || Object.values(item)[0];
-                        if (courseName && !db.courses.includes(courseName)) db.courses.push(courseName);
-                    } else if (entityType === 'teachers') {
-                        const name = item.name || item.Name || `${item.firstName || ''} ${item.lastName || ''}`.trim();
-                        const username = item.username || item.Username || item.lastName || name.replace(/[^a-zA-Z]/g, '');
-                        const password = item.password || item.Password || 'teacher123';
-                        if (name) db.teachers.push({ id: 't_' + Date.now() + Math.random(), name, username, password });
-                    } else if (entityType === 'students') {
-                        const first = item.firstName || item.First || item.first_name || '';
-                        const last = item.lastName || item.Last || item.last_name || Object.values(item)[0] || '';
-                        const num = String(item.studentNum || item.id || item.ID || item.student_id || Math.floor(1000000 + Math.random() * 9000000));
-                        const password = item.password || item.Password || num.slice(-4);
-                        if (last) db.students.push({ id: 's_' + Date.now() + Math.random(), firstName: first, lastName: last, studentNum: num, password, teacherAdvisorId: "", pendingTeacherAdvisorId: "" });
-                    }
-                });
-
-                saveData(db);
-                renderAdminLists();
-            } else {
-                output.textContent = 'Error: ' + (result.error || 'Failed to parse CSV file');
+            const result = await api('POST', endpoint, formData);
+            let message = `Import complete: ${result.imported} added, ${result.skipped} skipped (${result.rowsRead} rows read).`;
+            if (result.skippedDetails && result.skippedDetails.length) {
+                message += '\n\nSkipped rows:\n' + result.skippedDetails.join('\n');
             }
+            output.textContent = message;
+            input.value = '';
+            await renderAdminLists();
         } catch (err) {
-            output.textContent = 'Server endpoint error: ' + err.message;
+            if (err.message !== SESSION_EXPIRED) output.textContent = 'Error: ' + err.message;
         }
     }
 
-    // TEACHER ACTIONS & APPROVAL WORKFLOWS
-    function updateTeacherPassword() {
-        const newPass = document.getElementById('teacherNewPassword').value.trim();
-        if (!newPass) return alert('Please enter a new password.');
-
-        const db = loadData();
-        const teacher = db.teachers.find(t => t.id === currentUser.id);
-        if (teacher) {
-            teacher.password = newPass;
-            currentUser.password = newPass;
-            saveData(db);
-            alert('Your password has been updated successfully!');
-            document.getElementById('teacherNewPassword').value = '';
-        }
+    // ---------- TEACHER ACTIONS & APPROVAL WORKFLOWS ----------
+    async function updateTeacherPassword() {
+        const password = document.getElementById('teacherNewPassword').value.trim();
+        if (!password) return alert('Please enter a new password.');
+        await api('PUT', '/api/teachers/me/password', { password });
+        document.getElementById('teacherNewPassword').value = '';
+        alert('Your password has been updated successfully!');
     }
 
     function updateTeacherCourseFilterOptions(myPassports) {
         const select = document.getElementById('teacherCourseFilter');
-        const currentValue = select.value || "ALL";
+        const currentValue = select.value || 'ALL';
         const courses = [...new Set(myPassports.map(p => p.course))].sort();
-        
+
         let optionsHtml = '<option value="ALL">All Courses</option>';
         courses.forEach(c => {
-            const isSelected = c === currentValue ? 'selected' : '';
-            optionsHtml += `<option value="${c}" ${isSelected}>${c}</option>`;
+            optionsHtml += `<option value="${esc(c)}" ${c === currentValue ? 'selected' : ''}>${esc(c)}</option>`;
         });
         select.innerHTML = optionsHtml;
     }
 
-    function populateTeacherStudentAssistSelect() {
-        const db = loadData();
-        const select = document.getElementById('teacherStudentAssistSelect');
-        if (!select) return;
-        const sortedStudents = [...db.students].sort((a, b) => a.lastName.localeCompare(b.lastName));
-        select.innerHTML = sortedStudents.map(s => `<option value="${s.id}">${s.lastName}, ${s.firstName} (${s.studentNum})</option>`).join('');
-    }
-
     function assistSelectedStudentFromTeacher() {
         const select = document.getElementById('teacherStudentAssistSelect');
-        if (select && select.value) {
-            assistStudent(select.value);
-        }
+        if (select && select.value) assistStudent(Number(select.value));
     }
 
-    // TEACHER APPROVAL HANDLERS FOR PASSPORT DELETION AND TA REQUESTS
-    function approvePassportDeletion(passportId) {
+    async function approvePassportDeletion(passportId) {
         if (!confirm('Are you sure you want to approve deleting this passport? This cannot be undone.')) return;
-        const db = loadData();
-        db.passports = db.passports.filter(p => p.id !== passportId);
-        saveData(db);
+        await api('POST', `/api/passports/${passportId}/deletion/approve`);
         alert('Passport deletion approved and removed.');
-        renderTeacherView();
+        await renderTeacherView();
     }
 
-    function denyPassportDeletion(passportId) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        if (passport) {
-            passport.deleteRequested = false;
-            saveData(db);
-            alert('Passport deletion request denied.');
-            renderTeacherView();
-        }
+    async function denyPassportDeletion(passportId) {
+        await api('POST', `/api/passports/${passportId}/deletion/deny`);
+        alert('Passport deletion request denied.');
+        await renderTeacherView();
     }
 
-    function approveTARequest(studentId) {
-        const db = loadData();
-        const student = db.students.find(s => s.id === studentId);
-        if (student && student.pendingTeacherAdvisorId) {
-            student.teacherAdvisorId = student.pendingTeacherAdvisorId;
-            student.pendingTeacherAdvisorId = "";
-            saveData(db);
-            alert(`Approved ${student.firstName} ${student.lastName}'s Teacher Advisor request.`);
-            renderTeacherView();
-        }
+    async function approveTARequest(studentId) {
+        const result = await api('POST', `/api/students/${studentId}/ta-request/approve`);
+        alert(`Approved ${result.studentName}'s Teacher Advisor request.`);
+        await renderTeacherView();
     }
 
-    function denyTARequest(studentId) {
-        const db = loadData();
-        const student = db.students.find(s => s.id === studentId);
-        if (student) {
-            student.pendingTeacherAdvisorId = "";
-            saveData(db);
-            alert(`Denied Teacher Advisor request for ${student.firstName} ${student.lastName}.`);
-            renderTeacherView();
-        }
+    async function denyTARequest(studentId) {
+        const result = await api('POST', `/api/students/${studentId}/ta-request/deny`);
+        alert(`Denied Teacher Advisor request for ${result.studentName}.`);
+        await renderTeacherView();
     }
 
-    function renderTeacherView() {
-        const db = loadData();
-        
-        // 1. RENDER PENDING ACTION ITEMS (DELETIONS & TA ADVISOR REQUESTS)
+    function matrixCell(passport, unit, pendingLabel) {
+        const [cellClass, label] = {
+            approved: ['cell-approved', '✔'],
+            revision: ['cell-revision', 'Rev'],
+            pending:  ['cell-pending', pendingLabel],
+            empty:    ['cell-empty', '-']
+        }[unitStatus(unit)];
+        return `<td class="${cellClass}" onclick="openTeacherReview(${passport.id}, ${unit.unitNum})">${label}</td>`;
+    }
+
+    function unitHeaderCells() {
+        let html = '';
+        for (let i = 1; i <= UNIT_COUNT; i++) html += `<th>U${i}</th>`;
+        return html;
+    }
+
+    async function renderTeacherView() {
+        const data = await api('GET', '/api/teacher/dashboard');
+
+        reviewPassportCache = {};
+        [...data.coursePassports, ...data.adviseePassports].forEach(p => reviewPassportCache[p.id] = p);
+
+        const smallBtn = 'style="padding:2px 8px; font-size:0.75rem;"';
+
+        // 1. PENDING ACTION ITEMS
         const pendingDeletionsContainer = document.getElementById('pendingDeletionsList');
-        const pendingTARequestsContainer = document.getElementById('pendingTARequestsList');
-
-        const pendingDeletions = db.passports.filter(p => p.teacher === currentUser.name && p.deleteRequested);
-        if (pendingDeletions.length === 0) {
-            pendingDeletionsContainer.innerHTML = `<li style="color:#64748b; font-style:italic;">No pending deletion requests.</li>`;
-        } else {
-            pendingDeletionsContainer.innerHTML = pendingDeletions.map(p => `
+        pendingDeletionsContainer.innerHTML = data.pendingDeletions.length === 0
+            ? `<li style="color:#64748b; font-style:italic;">No pending deletion requests.</li>`
+            : data.pendingDeletions.map(p => `
                 <li>
-                    <span><strong>${p.studentName}</strong> - ${p.course}</span>
+                    <span><strong>${esc(p.studentName)}</strong> - ${esc(p.course)}</span>
                     <div style="display:flex; gap:4px;">
-                        <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="approvePassportDeletion('${p.id}')">Approve Delete</button>
-                        <button class="btn btn-secondary" style="padding:2px 8px; font-size:0.75rem;" onclick="denyPassportDeletion('${p.id}')">Deny</button>
+                        <button class="btn btn-danger" ${smallBtn} onclick="approvePassportDeletion(${p.id})">Approve Delete</button>
+                        <button class="btn btn-secondary" ${smallBtn} onclick="denyPassportDeletion(${p.id})">Deny</button>
                     </div>
                 </li>
             `).join('');
-        }
 
-        const pendingTARequests = db.students.filter(s => s.pendingTeacherAdvisorId === currentUser.id);
-        if (pendingTARequests.length === 0) {
-            pendingTARequestsContainer.innerHTML = `<li style="color:#64748b; font-style:italic;">No pending TA transfer requests.</li>`;
-        } else {
-            pendingTARequestsContainer.innerHTML = pendingTARequests.map(s => {
-                const currentTA = db.teachers.find(t => t.id === s.teacherAdvisorId);
-                const currentTAName = currentTA ? currentTA.name : 'None';
-                return `
-                    <li>
-                        <span><strong>${s.lastName}, ${s.firstName}</strong> (Current TA: ${currentTAName})</span>
-                        <div style="display:flex; gap:4px;">
-                            <button class="btn btn-success" style="padding:2px 8px; font-size:0.75rem;" onclick="approveTARequest('${s.id}')">Approve</button>
-                            <button class="btn btn-danger" style="padding:2px 8px; font-size:0.75rem;" onclick="denyTARequest('${s.id}')">Deny</button>
-                        </div>
-                    </li>
-                `;
-            }).join('');
-        }
+        const pendingTARequestsContainer = document.getElementById('pendingTARequestsList');
+        pendingTARequestsContainer.innerHTML = data.pendingTARequests.length === 0
+            ? `<li style="color:#64748b; font-style:italic;">No pending TA transfer requests.</li>`
+            : data.pendingTARequests.map(s => `
+                <li>
+                    <span><strong>${esc(s.lastName)}, ${esc(s.firstName)}</strong> (Current TA: ${esc(s.currentTAName || 'None')})</span>
+                    <div style="display:flex; gap:4px;">
+                        <button class="btn btn-success" ${smallBtn} onclick="approveTARequest(${s.id})">Approve</button>
+                        <button class="btn btn-danger" ${smallBtn} onclick="denyTARequest(${s.id})">Deny</button>
+                    </div>
+                </li>
+            `).join('');
 
-        // 2. RENDER COURSE TEACHER MATRIX
-        const headerTr = document.getElementById('teacherTableHeader');
-        const body = document.getElementById('teacherTableBody');
-        populateTeacherStudentAssistSelect();
+        // Student assistance dropdown
+        document.getElementById('teacherStudentAssistSelect').innerHTML = data.students
+            .map(s => `<option value="${s.id}">${esc(s.lastName)}, ${esc(s.firstName)} (${esc(s.studentNum)})</option>`)
+            .join('');
 
-        let headerHtml = '<th>Student</th><th>Course</th>';
-        for(let i = 1; i <= 16; i++) {
-            headerHtml += `<th>U${i}</th>`;
-        }
-        headerTr.innerHTML = headerHtml;
-
-        const allTeacherPassports = db.passports.filter(p => p.teacher === currentUser.name);
-        updateTeacherCourseFilterOptions(allTeacherPassports);
+        // 2. COURSE TEACHER MATRIX
+        document.getElementById('teacherTableHeader').innerHTML = '<th>Student</th><th>Course</th>' + unitHeaderCells();
+        updateTeacherCourseFilterOptions(data.coursePassports);
 
         const selectedCourse = document.getElementById('teacherCourseFilter').value;
-        let displayedPassports = [...allTeacherPassports];
-        if (selectedCourse && selectedCourse !== 'ALL') {
-            displayedPassports = displayedPassports.filter(p => p.course === selectedCourse);
-        }
+        const displayed = data.coursePassports.filter(p => !selectedCourse || selectedCourse === 'ALL' || p.course === selectedCourse);
 
-        displayedPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
+        document.getElementById('teacherTableBody').innerHTML = displayed.length === 0
+            ? `<tr><td colspan="18">No student course attendance and participation passports found for this filter.</td></tr>`
+            : displayed.map(p => `
+                <tr>
+                    <td style="font-weight:bold; text-align:left;">${esc(p.studentName)}${p.deleteRequested ? ' <span style="color:var(--accent-red); font-size:0.75rem;">(Deletion Requested)</span>' : ''}</td>
+                    <td>${esc(p.course)}</td>
+                    ${p.units.map(u => matrixCell(p, u, 'Review')).join('')}
+                </tr>
+            `).join('');
 
-        if(displayedPassports.length === 0) {
-            body.innerHTML = `<tr><td colspan="18">No student course attendance and participation passports found for this filter.</td></tr>`;
-        } else {
-            body.innerHTML = displayedPassports.map(p => {
-                let rowHtml = `<tr>
-                    <td style="font-weight:bold; text-align:left;">${p.studentName}${p.deleteRequested ? ' <span style="color:var(--accent-red); font-size:0.75rem;">(Deletion Requested)</span>' : ''}</td>
-                    <td>${p.course}</td>`;
+        // 3. TEACHER ADVISOR MATRIX (ADVISEES)
+        document.getElementById('adviseeTableHeader').innerHTML = '<th>Student</th><th>Course</th><th>Course Teacher</th>' + unitHeaderCells();
 
-                p.units.forEach((u, idx) => {
-                    let cellClass = 'cell-empty';
-                    let cellContent = '-';
-
-                    if (u.approved) {
-                        cellClass = 'cell-approved';
-                        cellContent = '✔';
-                    } else if (u.needsRevision) {
-                        cellClass = 'cell-revision';
-                        cellContent = 'Rev';
-                    } else if (u.reflection && u.reflection.trim() !== '') {
-                        cellClass = 'cell-pending';
-                        cellContent = 'Review';
-                    }
-
-                    rowHtml += `<td class="${cellClass}" onclick="openTeacherReview('${p.id}', ${idx})">${cellContent}</td>`;
-                });
-
-                rowHtml += `</tr>`;
-                return rowHtml;
-            }).join('');
-        }
-
-        // 3. RENDER TEACHER ADVISOR MATRIX (ADVISEES)
-        const adviseeHeaderTr = document.getElementById('adviseeTableHeader');
-        const adviseeBody = document.getElementById('adviseeTableBody');
-
-        let adviseeHeaderHtml = '<th>Student</th><th>Course</th><th>Course Teacher</th>';
-        for(let i = 1; i <= 16; i++) {
-            adviseeHeaderHtml += `<th>U${i}</th>`;
-        }
-        adviseeHeaderTr.innerHTML = adviseeHeaderHtml;
-
-        const myAdvisees = db.students.filter(s => s.teacherAdvisorId === currentUser.id);
-        const myAdviseeIds = myAdvisees.map(s => s.id);
-        const adviseePassports = db.passports.filter(p => myAdviseeIds.includes(p.studentId));
-
-        adviseePassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
-
-        if(adviseePassports.length === 0) {
-            adviseeBody.innerHTML = `<tr><td colspan="19">No advisee passports found. (No students have selected you as their Teacher Advisor yet or created passports)</td></tr>`;
-        } else {
-            adviseeBody.innerHTML = adviseePassports.map(p => {
-                let rowHtml = `<tr>
-                    <td style="font-weight:bold; text-align:left;">${p.studentName}</td>
-                    <td>${p.course}</td>
-                    <td style="font-size:0.8rem; color:#475569;">${p.teacher}</td>`;
-
-                p.units.forEach((u, idx) => {
-                    let cellClass = 'cell-empty';
-                    let cellContent = '-';
-
-                    if (u.approved) {
-                        cellClass = 'cell-approved';
-                        cellContent = '✔';
-                    } else if (u.needsRevision) {
-                        cellClass = 'cell-revision';
-                        cellContent = 'Rev';
-                    } else if (u.reflection && u.reflection.trim() !== '') {
-                        cellClass = 'cell-pending';
-                        cellContent = 'View';
-                    }
-
-                    rowHtml += `<td class="${cellClass}" onclick="openTeacherReview('${p.id}', ${idx})">${cellContent}</td>`;
-                });
-
-                rowHtml += `</tr>`;
-                return rowHtml;
-            }).join('');
-        }
+        document.getElementById('adviseeTableBody').innerHTML = data.adviseePassports.length === 0
+            ? `<tr><td colspan="19">No advisee passports found. (No students have selected you as their Teacher Advisor yet or created passports)</td></tr>`
+            : data.adviseePassports.map(p => `
+                <tr>
+                    <td style="font-weight:bold; text-align:left;">${esc(p.studentName)}</td>
+                    <td>${esc(p.course)}</td>
+                    <td style="font-size:0.8rem; color:#475569;">${esc(p.teacher)}</td>
+                    ${p.units.map(u => matrixCell(p, u, 'View')).join('')}
+                </tr>
+            `).join('');
     }
 
-    function openTeacherReview(passportId, unitIndex) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        const unit = passport.units[unitIndex];
+    function openTeacherReview(passportId, unitNum) {
+        const passport = reviewPassportCache[passportId];
+        if (!passport) return;
+        const unit = passport.units.find(u => u.unitNum === unitNum);
 
         if (!unit.reflection && !unit.approved && !unit.needsRevision) {
             alert('Student has not submitted an attendance and participation reflection for this unit yet.');
@@ -995,206 +801,138 @@ async function login() {
         }
 
         activePassportId = passportId;
-        activeUnitIndex = unitIndex;
+        activeUnitNum = unitNum;
 
         document.getElementById('reviewStudentName').innerText = passport.studentName;
         document.getElementById('reviewCourseName').innerText = passport.course;
         document.getElementById('reviewUnitNum').innerText = unit.unitNum;
-        document.getElementById('reviewText').innerText = unit.reflection || "(No reflection text)";
-        document.getElementById('teacherFeedback').value = unit.feedback || "";
+        document.getElementById('reviewText').innerText = unit.reflection || '(No reflection text)';
+        document.getElementById('teacherFeedback').value = unit.feedback || '';
 
-        const isCourseTeacher = (currentUser && currentUser.role === 'teacher' && passport.teacher === currentUser.name) || (currentUser && currentUser.role === 'admin');
-
-        const actionButtons = document.getElementById('reviewActionButtons');
+        const isCourseTeacher = currentUser.role === 'admin' || passport.teacherId === currentUser.id;
         const notice = document.getElementById('taReadOnlyNotice');
-        const feedbackTextarea = document.getElementById('teacherFeedback');
 
-        if (isCourseTeacher) {
-            actionButtons.style.display = 'flex';
-            notice.style.display = 'none';
-            feedbackTextarea.disabled = false;
-        } else {
-            actionButtons.style.display = 'none';
-            notice.style.display = 'block';
-            notice.innerHTML = `<strong>Teacher Advisor View Only:</strong> You are viewing this passport as a Teacher Advisor. Only the assigned Course Teacher (<strong>${passport.teacher}</strong>) can sign off on units or request revisions.`;
-            feedbackTextarea.disabled = true;
-        }
+        document.getElementById('reviewActionButtons').style.display = isCourseTeacher ? 'flex' : 'none';
+        document.getElementById('teacherFeedback').disabled = !isCourseTeacher;
+        notice.style.display = isCourseTeacher ? 'none' : 'block';
+        notice.innerHTML = isCourseTeacher ? '' :
+            `<strong>Teacher Advisor View Only:</strong> You are viewing this passport as a Teacher Advisor. Only the assigned Course Teacher (<strong>${esc(passport.teacher)}</strong>) can sign off on units or request revisions.`;
 
         openModal('teacherReviewModal');
     }
 
-    function saveTeacherReview(approve) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === activePassportId);
-        const unit = passport.units[activeUnitIndex];
-        const feedbackText = document.getElementById('teacherFeedback').value.trim();
-
-        if (approve) {
-            unit.approved = true;
-            unit.needsRevision = false;
-            unit.feedback = feedbackText;
-        } else {
-            unit.approved = false;
-            unit.needsRevision = true;
-            unit.feedback = feedbackText;
-        }
-
-        saveData(db);
+    async function saveTeacherReview(approve) {
+        const feedback = document.getElementById('teacherFeedback').value.trim();
+        await api('PUT', `/api/passports/${activePassportId}/units/${activeUnitNum}/review`, { approve, feedback });
         closeModal('teacherReviewModal');
-        renderTeacherView();
+        await renderTeacherView();
     }
 
-    // IMPERSONATION / ASSISTANCE LOGIC (ADMIN & TEACHER)
-    function assistStudent(studentId) {
-        const db = loadData();
-        const student = db.students.find(s => s.id === studentId);
-        if (!student) return;
-
-        impersonatedStudent = student;
-
+    // ---------- IMPERSONATION / ASSISTANCE (ADMIN & TEACHER) ----------
+    async function assistStudent(studentId) {
+        impersonatedStudentId = studentId;
         document.getElementById('adminView').style.display = 'none';
         document.getElementById('teacherView').style.display = 'none';
         document.getElementById('studentView').style.display = 'block';
-
         document.getElementById('impersonationBanner').style.display = 'flex';
-        document.getElementById('impersonatedStudentName').innerText = `${student.firstName} ${student.lastName} (${student.studentNum})`;
-
-        renderStudentView();
+        await renderStudentView();
     }
 
-    function exitImpersonation() {
-        impersonatedStudent = null;
+    async function exitImpersonation() {
+        impersonatedStudentId = null;
         document.getElementById('impersonationBanner').style.display = 'none';
         document.getElementById('studentView').style.display = 'none';
 
         if (currentUser.role === 'admin') {
             document.getElementById('adminView').style.display = 'block';
-            renderAdminLists();
+            await renderAdminLists();
         } else if (currentUser.role === 'teacher') {
             document.getElementById('teacherView').style.display = 'block';
-            renderTeacherView();
+            await renderTeacherView();
         }
     }
 
-    // STUDENT WORKFLOWS: PASSPORT DELETION REQUESTS & TA SELECTION APPROVALS
-    function requestPassportDeletion(passportId) {
+    // ---------- STUDENT WORKFLOWS ----------
+    async function requestPassportDeletion(passportId) {
         if (!confirm('Are you sure you want to request deletion of this passport? Your course teacher must approve this request.')) return;
-        
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        if (passport) {
-            passport.deleteRequested = true;
-            saveData(db);
-            alert(`Deletion request submitted to ${passport.teacher}.`);
-            closeModal('studentPassportModal');
-            renderStudentView();
-        }
+        const result = await api('POST', `/api/passports/${passportId}/deletion-request`, { requested: true });
+        alert(`Deletion request submitted to ${result.teacher}.`);
+        closeModal('studentPassportModal');
+        await renderStudentView();
     }
 
-    function cancelPassportDeletionRequest(passportId) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        if (passport) {
-            passport.deleteRequested = false;
-            saveData(db);
-            alert('Deletion request cancelled.');
-            closeModal('studentPassportModal');
-            renderStudentView();
-        }
+    async function cancelPassportDeletionRequest(passportId) {
+        await api('POST', `/api/passports/${passportId}/deletion-request`, { requested: false });
+        alert('Deletion request cancelled.');
+        closeModal('studentPassportModal');
+        await renderStudentView();
     }
 
-    function updateStudentTA() {
-        const targetStudent = getActiveStudent();
-        if (!targetStudent) return;
+    async function updateStudentTA() {
+        const studentId = getActiveStudentId();
+        if (!studentId) return;
+        const teacherId = Number(document.getElementById('studentTASelect').value);
+        if (!teacherId) return alert('Please select a Teacher Advisor.');
 
-        const taSelect = document.getElementById('studentTASelect');
-        const selectedTaId = taSelect.value;
-        if (!selectedTaId) return alert('Please select a Teacher Advisor.');
-
-        const db = loadData();
-        const student = db.students.find(s => s.id === targetStudent.id);
-        if (!student) return;
-
-        const selectedTeacher = db.teachers.find(t => t.id === selectedTaId);
-
-        if (!student.teacherAdvisorId) {
-            // Initial Selection - direct save
-            student.teacherAdvisorId = selectedTaId;
-            student.pendingTeacherAdvisorId = "";
-            targetStudent.teacherAdvisorId = selectedTaId;
-            targetStudent.pendingTeacherAdvisorId = "";
-            saveData(db);
-            alert(`Teacher Advisor assigned to: ${selectedTeacher ? selectedTeacher.name : ''}`);
+        const result = await api('PUT', `/api/students/${studentId}/teacher-advisor`, { teacherId });
+        if (result.status === 'assigned') {
+            alert(`Teacher Advisor assigned to: ${result.teacherName}`);
         } else {
-            // Change Selection - requires approval from new Teacher Advisor
-            student.pendingTeacherAdvisorId = selectedTaId;
-            targetStudent.pendingTeacherAdvisorId = selectedTaId;
-            saveData(db);
-            alert(`Transfer request sent to ${selectedTeacher ? selectedTeacher.name : 'Teacher Advisor'}. Awaiting teacher approval.`);
+            alert(`Transfer request sent to ${result.teacherName}. Awaiting teacher approval.`);
         }
-
-        renderStudentView();
+        await renderStudentView();
     }
 
-    function cancelTARequest() {
-        const targetStudent = getActiveStudent();
-        if (!targetStudent) return;
-
-        const db = loadData();
-        const student = db.students.find(s => s.id === targetStudent.id);
-        if (student) {
-            student.pendingTeacherAdvisorId = "";
-            targetStudent.pendingTeacherAdvisorId = "";
-            saveData(db);
-            alert('Teacher Advisor change request cancelled.');
-            renderStudentView();
-        }
+    async function cancelTARequest() {
+        const studentId = getActiveStudentId();
+        if (!studentId) return;
+        await api('DELETE', `/api/students/${studentId}/teacher-advisor-request`);
+        alert('Teacher Advisor change request cancelled.');
+        await renderStudentView();
     }
 
-    function updateStudentPassword() {
-        const newPass = document.getElementById('studentNewPassword').value.trim();
-        if (!newPass) return alert('Please enter a new password.');
+    async function updateStudentPassword() {
+        const password = document.getElementById('studentNewPassword').value.trim();
+        if (!password) return alert('Please enter a new password.');
+        const studentId = getActiveStudentId();
+        if (!studentId) return;
 
-        const targetStudent = getActiveStudent();
-        if (!targetStudent) return;
-
-        const db = loadData();
-        const student = db.students.find(s => s.id === targetStudent.id);
-        if (student) {
-            student.password = newPass;
-            targetStudent.password = newPass;
-            saveData(db);
-            alert(`Password updated successfully for ${student.firstName} ${student.lastName}!`);
-            document.getElementById('studentNewPassword').value = '';
-        }
+        const result = await api('PUT', `/api/students/${studentId}/password`, { password });
+        document.getElementById('studentNewPassword').value = '';
+        alert(`Password updated successfully for ${result.studentName}!`);
     }
 
-    function renderStudentView() {
-        const db = loadData();
-        const activeStudent = getActiveStudent();
-        if (!activeStudent) return;
+    async function renderStudentView() {
+        const studentId = getActiveStudentId();
+        if (!studentId) return;
 
-        // RENDER TA BOX (INITIAL VS CHANGE REQUEST STATUS)
-        const taBox = document.getElementById('studentTABox');
-        const currentTA = db.teachers.find(t => t.id === activeStudent.teacherAdvisorId);
-        const pendingTA = db.teachers.find(t => t.id === activeStudent.pendingTeacherAdvisorId);
+        const { student, passports, teachers, courses } = await api('GET', `/api/students/${studentId}/dashboard`);
 
+        if (impersonatedStudentId) {
+            document.getElementById('impersonatedStudentName').innerText =
+                `${student.firstName} ${student.lastName} (${student.studentNum})`;
+        }
+
+        // TEACHER ADVISOR BOX
+        const currentTA = teachers.find(t => t.id === student.teacherAdvisorId);
+        const pendingTA = teachers.find(t => t.id === student.pendingTeacherAdvisorId);
         let taHtml = '';
-        if (activeStudent.pendingTeacherAdvisorId && pendingTA) {
+
+        if (pendingTA) {
             taHtml = `
                 <div class="pending-box">
-                    <strong>⌛ Transfer Pending:</strong> Request sent to <b>${pendingTA.name}</b>.
-                    <br><span style="font-size:0.8rem;">Current TA: ${currentTA ? currentTA.name : 'None'}</span>
+                    <strong>⌛ Transfer Pending:</strong> Request sent to <b>${esc(pendingTA.name)}</b>.
+                    <br><span style="font-size:0.8rem;">Current TA: ${esc(currentTA ? currentTA.name : 'None')}</span>
                 </div>
                 <button class="btn btn-secondary" style="width:100%;" onclick="cancelTARequest()">Cancel Change Request</button>
             `;
-        } else if (activeStudent.teacherAdvisorId && currentTA) {
+        } else if (currentTA) {
             taHtml = `
-                <p style="font-size:0.9rem; margin-bottom:8px;">Current Advisor: <strong>${currentTA.name}</strong></p>
+                <p style="font-size:0.9rem; margin-bottom:8px;">Current Advisor: <strong>${esc(currentTA.name)}</strong></p>
                 <p style="font-size: 0.8rem; color:#64748b; margin-bottom:8px;">Request a new Teacher Advisor (requires teacher sign-off):</p>
                 <select id="studentTASelect" style="margin-bottom:12px;">
                     <option value="">-- Select New Teacher Advisor --</option>
-                    ${db.teachers.filter(t => t.id !== activeStudent.teacherAdvisorId).map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                    ${teachers.filter(t => t.id !== currentTA.id).map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
                 </select>
                 <button class="btn btn-success" style="width:100%;" onclick="updateStudentTA()">Request TA Change</button>
             `;
@@ -1203,98 +941,77 @@ async function login() {
                 <p style="font-size: 0.85rem; color:#64748b; margin-bottom:8px;">Select your assigned Teacher Advisor.</p>
                 <select id="studentTASelect" style="margin-bottom:12px;">
                     <option value="">-- Select Teacher Advisor --</option>
-                    ${db.teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
+                    ${teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
                 </select>
                 <button class="btn btn-success" style="width:100%;" onclick="updateStudentTA()">Set Teacher Advisor</button>
             `;
         }
-        taBox.innerHTML = taHtml;
+        document.getElementById('studentTABox').innerHTML = taHtml;
 
-        // RENDER PASSPORTS
-        const myPassports = db.passports.filter(p => p.studentId === activeStudent.id);
-        const container = document.getElementById('studentPassports');
-
-        document.getElementById('studentPassportHeading').innerText = impersonatedStudent 
-            ? `${activeStudent.firstName}'s Course Passports` 
+        // PASSPORTS
+        document.getElementById('studentPassportHeading').innerText = impersonatedStudentId
+            ? `${student.firstName}'s Course Passports`
             : 'My Course Attendance & Participation Passports';
 
-        if(myPassports.length === 0) {
-            container.innerHTML = `<p>No course attendance and participation passports created yet. Click "+ New Passport" above to start.</p>`;
-        } else {
-            container.innerHTML = myPassports.map(p => `
-                <div class="passport-card" onclick="openPassportModal('${p.id}')">
+        const container = document.getElementById('studentPassports');
+        container.innerHTML = passports.length === 0
+            ? `<p>No course attendance and participation passports created yet. Click "+ New Passport" above to start.</p>`
+            : passports.map(p => `
+                <div class="passport-card" onclick="openPassportModal(${p.id})">
                     ${p.deleteRequested ? '<div style="position:absolute; top:8px; right:8px; background:var(--revision); color:var(--revision-dark); font-size:0.7rem; padding:2px 6px; border-radius:4px; font-weight:bold;">Deletion Requested</div>' : ''}
-                    <h4 style="color:var(--primary);">${p.course}</h4>
-                    <p style="color:#64748b; font-size:0.9rem;">Teacher: ${p.teacher}</p>
+                    <h4 style="color:var(--primary);">${esc(p.course)}</h4>
+                    <p style="color:#64748b; font-size:0.9rem;">Teacher: ${esc(p.teacher)}</p>
                     <div style="margin-top:10px; font-size:0.85rem;">
-                        Signed Off Units: ${p.units.filter(u => u.approved).length}/16
+                        Signed Off Units: ${p.units.filter(u => u.approved).length}/${UNIT_COUNT}
                     </div>
                 </div>
             `).join('');
-        }
 
-        document.getElementById('passportCourseSelect').innerHTML = db.courses.map(c => `<option value="${c}">${c}</option>`).join('');
-        document.getElementById('passportTeacherSelect').innerHTML = db.teachers.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+        // "New Passport" dropdowns
+        document.getElementById('passportCourseSelect').innerHTML = courses.length
+            ? courses.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')
+            : '<option value="">No courses available</option>';
+        document.getElementById('passportTeacherSelect').innerHTML = teachers.length
+            ? teachers.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')
+            : '<option value="">No teachers available</option>';
     }
 
-    function createPassport() {
-        const course = document.getElementById('passportCourseSelect').value;
-        const teacher = document.getElementById('passportTeacherSelect').value;
-        if (!course || !teacher) return;
+    async function createPassport() {
+        const courseId = Number(document.getElementById('passportCourseSelect').value);
+        const teacherId = Number(document.getElementById('passportTeacherSelect').value);
+        if (!courseId || !teacherId) return alert('Please select a course and a teacher.');
+        const studentId = getActiveStudentId();
+        if (!studentId) return;
 
-        const activeStudent = getActiveStudent();
-        if (!activeStudent) return;
-
-        const db = loadData();
-        const newPassport = {
-            id: 'p_' + Date.now(),
-            studentId: activeStudent.id,
-            studentName: `${activeStudent.lastName}, ${activeStudent.firstName}`,
-            course: course,
-            teacher: teacher,
-            deleteRequested: false,
-            units: Array.from({ length: 16 }, (_, i) => ({ unitNum: i + 1, reflection: "", approved: false, needsRevision: false, feedback: "" }))
-        };
-
-        db.passports.push(newPassport);
-        saveData(db);
+        await api('POST', `/api/students/${studentId}/passports`, { courseId, teacherId });
         closeModal('createPassportModal');
-        renderStudentView();
+        await renderStudentView();
     }
 
-    function openPassportModal(passportId) {
+    async function openPassportModal(passportId) {
+        const passport = await api('GET', `/api/passports/${passportId}`);
         activePassportId = passportId;
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
 
         document.getElementById('studentPassportTitle').innerText = `${passport.course} - Course Attendance & Participation Passport`;
-        
-        const headerActions = document.getElementById('passportModalHeaderActions');
-        if (passport.deleteRequested) {
-            headerActions.innerHTML = `
-                <div class="pending-box" style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>⚠️ Deletion requested. Awaiting approval from <strong>${passport.teacher}</strong>.</span>
-                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="cancelPassportDeletionRequest('${passport.id}')">Cancel Request</button>
-                </div>
-            `;
-        } else {
-            headerActions.innerHTML = `
-                <div style="display:flex; justify-content:flex-end;">
-                    <button class="btn btn-danger" style="padding:4px 10px; font-size:0.8rem;" onclick="requestPassportDeletion('${passport.id}')">🗑️ Request Passport Deletion</button>
-                </div>
-            `;
-        }
 
-        const unitsContainer = document.getElementById('passportUnitsList');
-        unitsContainer.innerHTML = passport.units.map((u, index) => {
-            let statusBadge = '<span style="color:#94a3b8;">Incomplete</span>';
-            if (u.approved) {
-                statusBadge = '<span class="badge-check">✔ Signed Off</span>';
-            } else if (u.needsRevision) {
-                statusBadge = '<span style="color:#dc2626; font-weight:bold;">⚠️ Revision Requested</span>';
-            } else if (u.reflection) {
-                statusBadge = '<span style="color:#854d0e;">Pending Teacher Review</span>';
-            }
+        document.getElementById('passportModalHeaderActions').innerHTML = passport.deleteRequested
+            ? `
+                <div class="pending-box" style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>⚠️ Deletion requested. Awaiting approval from <strong>${esc(passport.teacher)}</strong>.</span>
+                    <button class="btn btn-secondary" style="padding:4px 8px; font-size:0.8rem;" onclick="cancelPassportDeletionRequest(${passport.id})">Cancel Request</button>
+                </div>`
+            : `
+                <div style="display:flex; justify-content:flex-end;">
+                    <button class="btn btn-danger" style="padding:4px 10px; font-size:0.8rem;" onclick="requestPassportDeletion(${passport.id})">🗑️ Request Passport Deletion</button>
+                </div>`;
+
+        document.getElementById('passportUnitsList').innerHTML = passport.units.map(u => {
+            const statusBadge = {
+                approved: '<span class="badge-check">✔ Signed Off</span>',
+                revision: '<span style="color:#dc2626; font-weight:bold;">⚠️ Revision Requested</span>',
+                pending:  '<span style="color:#854d0e;">Pending Teacher Review</span>',
+                empty:    '<span style="color:#94a3b8;">Incomplete</span>'
+            }[unitStatus(u)];
 
             return `
                 <div class="unit-item">
@@ -1302,9 +1019,9 @@ async function login() {
                         <span>Unit ${u.unitNum}</span>
                         <span>${statusBadge}</span>
                     </div>
-                    ${u.feedback ? `<div style="background:#fff1f2; border:1px solid #fecdd3; padding:8px; border-radius:4px; font-size:0.85rem; color:#9f1239; margin-bottom:8px;"><strong>Teacher Feedback:</strong> ${u.feedback}</div>` : ''}
-                    <textarea id="reflection_${index}" rows="2" placeholder="Write your reflection on attendance and participation for Unit ${u.unitNum}..." ${u.approved ? 'disabled' : ''}>${u.reflection}</textarea>
-                    ${!u.approved ? `<button class="btn" style="padding:4px 8px; font-size:0.8rem;" onclick="saveReflection(${index})">${u.needsRevision ? 'Resubmit Unit ' + u.unitNum : 'Save Unit ' + u.unitNum}</button>` : ''}
+                    ${u.feedback ? `<div style="background:#fff1f2; border:1px solid #fecdd3; padding:8px; border-radius:4px; font-size:0.85rem; color:#9f1239; margin-bottom:8px;"><strong>Teacher Feedback:</strong> ${esc(u.feedback)}</div>` : ''}
+                    <textarea id="reflection_${u.unitNum}" rows="2" placeholder="Write your reflection on attendance and participation for Unit ${u.unitNum}..." ${u.approved ? 'disabled' : ''}>${esc(u.reflection)}</textarea>
+                    ${!u.approved ? `<button class="btn" style="padding:4px 8px; font-size:0.8rem;" onclick="saveReflection(${u.unitNum})">${u.needsRevision ? 'Resubmit' : 'Save'} Unit ${u.unitNum}</button>` : ''}
                 </div>
             `;
         }).join('');
@@ -1312,23 +1029,18 @@ async function login() {
         openModal('studentPassportModal');
     }
 
-    function saveReflection(unitIndex) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === activePassportId);
-        const text = document.getElementById(`reflection_${unitIndex}`).value;
-
-        passport.units[unitIndex].reflection = text;
-        passport.units[unitIndex].needsRevision = false;
-        saveData(db);
+    async function saveReflection(unitNum) {
+        const reflection = document.getElementById(`reflection_${unitNum}`).value;
+        await api('PUT', `/api/passports/${activePassportId}/units/${unitNum}/reflection`, { reflection });
         alert('Attendance & participation reflection saved!');
-        renderStudentView();
-        openPassportModal(activePassportId);
+        await renderStudentView();
+        await openPassportModal(activePassportId);
     }
 
-    // EXPORT ENGINE (SPREADSHEET & PDF)
+    // ---------- EXPORT ENGINE (SPREADSHEET & PDF) ----------
     function downloadFile(filename, data, type) {
         const blob = new Blob([data], { type });
-        const link = document.createElement("a");
+        const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = filename;
         document.body.appendChild(link);
@@ -1337,72 +1049,66 @@ async function login() {
     }
 
     function getPassportStatusLabel(unit) {
-        if (unit.approved) return "Signed Off";
-        if (unit.needsRevision) return "Revision Requested";
-        if (unit.reflection) return "Pending Review";
-        return "Incomplete";
+        return { approved: 'Signed Off', revision: 'Revision Requested', pending: 'Pending Review', empty: 'Incomplete' }[unitStatus(unit)];
+    }
+
+    function csvCell(value) {
+        let cell = String(value ?? '');
+        if (/^[=+\-@]/.test(cell)) cell = "'" + cell; // stop spreadsheet formula injection
+        return `"${cell.replace(/"/g, '""')}"`;
+    }
+
+    function passportsToCSV(passports) {
+        let csv = '\uFEFFStudent Name,Course,Teacher,Unit Number,Status,Attendance and Participation Reflection,Teacher Feedback\n';
+        passports.forEach(p => {
+            p.units.forEach(u => {
+                csv += [p.studentName, p.course, p.teacher, `Unit ${u.unitNum}`, getPassportStatusLabel(u), u.reflection, u.feedback]
+                    .map(csvCell).join(',') + '\n';
+            });
+        });
+        return csv;
     }
 
     function exportCurrentTeacherCSV() {
-        const selectedCourse = document.getElementById('teacherCourseFilter').value;
-        exportPassportsCSV(selectedCourse, currentUser.name);
+        exportPassportsCSV(document.getElementById('teacherCourseFilter').value);
     }
 
     function exportCurrentTeacherPDF() {
-        const selectedCourse = document.getElementById('teacherCourseFilter').value;
-        exportPassportsPDF(selectedCourse, currentUser.name);
+        exportPassportsPDF(document.getElementById('teacherCourseFilter').value);
     }
 
-    function exportPassportsCSV(courseFilter = 'ALL', teacherFilter = null) {
-        const db = loadData();
-        let targetPassports = [...db.passports];
-
-        if (teacherFilter) targetPassports = targetPassports.filter(p => p.teacher === teacherFilter);
-        if (courseFilter && courseFilter !== 'ALL') targetPassports = targetPassports.filter(p => p.course === courseFilter);
-
-        targetPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
-
-        if (targetPassports.length === 0) return alert('No passport records found to export.');
-
-        let csv = "Student Name,Course,Teacher,Unit Number,Status,Attendance and Participation Reflection,Teacher Feedback\n";
-
-        targetPassports.forEach(p => {
-            p.units.forEach(u => {
-                const cleanRef = `"${(u.reflection || '').replace(/"/g, '""')}"`;
-                const cleanFeed = `"${(u.feedback || '').replace(/"/g, '""')}"`;
-                const status = getPassportStatusLabel(u);
-                csv += `"${p.studentName}","${p.course}","${p.teacher}",Unit ${u.unitNum},"${status}",${cleanRef},${cleanFeed}\n`;
-            });
-        });
-
+    // Admins get every passport; teachers only get passports for courses they teach
+    async function exportPassportsCSV(courseFilter = 'ALL') {
+        const passports = await api('GET', `/api/passports?course=${encodeURIComponent(courseFilter)}`);
+        if (passports.length === 0) return alert('No passport records found to export.');
         const safeCourseName = courseFilter.replace(/[^a-zA-Z0-9]/g, '_');
-        downloadFile(`Course_Attendance_Participation_Passports_${safeCourseName}.csv`, csv, 'text/csv;charset=utf-8;');
+        downloadFile(`Course_Attendance_Participation_Passports_${safeCourseName}.csv`, passportsToCSV(passports), 'text/csv;charset=utf-8;');
     }
 
-    function exportSinglePassportCSV(passportId) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        if (!passport) return;
-
-        let csv = "Student Name,Course,Teacher,Unit Number,Status,Attendance and Participation Reflection,Teacher Feedback\n";
-        passport.units.forEach(u => {
-            const cleanRef = `"${(u.reflection || '').replace(/"/g, '""')}"`;
-            const cleanFeed = `"${(u.feedback || '').replace(/"/g, '""')}"`;
-            const status = getPassportStatusLabel(u);
-            csv += `"${passport.studentName}","${passport.course}","${passport.teacher}",Unit ${u.unitNum},"${status}",${cleanRef},${cleanFeed}\n`;
-        });
-
-        const safeStudentName = passport.studentName.replace(/[^a-zA-Z0-9]/g, '_');
-        downloadFile(`Attendance_Participation_Passport_${safeStudentName}_${passport.course}.csv`, csv, 'text/csv;charset=utf-8;');
+    async function exportSinglePassportCSV(passportId) {
+        const passport = await api('GET', `/api/passports/${passportId}`);
+        const safeName = `${passport.studentName}_${passport.course}`.replace(/[^a-zA-Z0-9]/g, '_');
+        downloadFile(`Attendance_Participation_Passport_${safeName}.csv`, passportsToCSV([passport]), 'text/csv;charset=utf-8;');
     }
 
-    function generatePrintWindow(title, htmlContent) {
+    // The print window is opened immediately (before loading data) so pop-up blockers allow it
+    function openPrintWindow() {
         const win = window.open('', '_blank');
+        if (!win) {
+            alert('Please allow pop-ups for this site to export PDFs.');
+            return null;
+        }
+        win.document.write('<p style="font-family:sans-serif; padding:20px;">Preparing report…</p>');
+        return win;
+    }
+
+    function writePrintWindow(win, title, htmlContent) {
+        win.document.open();
         win.document.write(`
             <!DOCTYPE html>
             <html>
             <head>
-                <title>${title}</title>
+                <title>${esc(title)}</title>
                 <style>
                     body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; padding: 25px; color: #0f172a; }
                     .pdf-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #1e2b58; padding-bottom: 15px; margin-bottom: 25px; }
@@ -1430,118 +1136,111 @@ async function login() {
         win.document.close();
     }
 
-    function exportPassportsPDF(courseFilter = 'ALL', teacherFilter = null) {
-        const db = loadData();
-        let targetPassports = [...db.passports];
-
-        if (teacherFilter) targetPassports = targetPassports.filter(p => p.teacher === teacherFilter);
-        if (courseFilter && courseFilter !== 'ALL') targetPassports = targetPassports.filter(p => p.course === courseFilter);
-
-        targetPassports.sort((a, b) => a.studentName.localeCompare(b.studentName));
-
-        if (targetPassports.length === 0) return alert('No passport records found to export.');
-
-        let html = `
-            <div class="pdf-header">
-                <div>
-                    <h2>Course Attendance and Participation Passport Summary Report</h2>
-                    <p class="meta">Generated: ${new Date().toLocaleDateString()} | Total Passports: ${targetPassports.length}</p>
-                </div>
-                <img src="MWCSS_Logo.png" class="pdf-logo" onerror="this.style.display='none'">
-            </div>
-        `;
-
-        targetPassports.forEach(p => {
-            html += `
-                <div class="passport-block">
-                    <h3>Student: ${p.studentName}</h3>
-                    <div class="meta">Course: <strong>${p.course}</strong> | Teacher: <strong>${p.teacher}</strong></div>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th style="width: 8%;">Unit</th>
-                                <th style="width: 17%;">Status</th>
-                                <th style="width: 45%;">Attendance & Participation Reflection</th>
-                                <th style="width: 30%;">Teacher Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-            `;
-
-            p.units.forEach(u => {
-                const status = getPassportStatusLabel(u);
-                let classStatus = '';
-                if (u.approved) classStatus = 'status-approved';
-                else if (u.needsRevision) classStatus = 'status-revision';
-                else if (u.reflection) classStatus = 'status-pending';
-
-                html += `
-                    <tr>
-                        <td>Unit ${u.unitNum}</td>
-                        <td class="${classStatus}">${status}</td>
-                        <td>${u.reflection || '-'}</td>
-                        <td>${u.feedback || '-'}</td>
-                    </tr>
-                `;
-            });
-
-            html += `</tbody></table></div>`;
-        });
-
-        generatePrintWindow(`Passports_${courseFilter}`, html);
-    }
-
-    function exportSinglePassportPDF(passportId) {
-        const db = loadData();
-        const passport = db.passports.find(p => p.id === passportId);
-        if (!passport) return;
-
-        let html = `
-            <div class="pdf-header">
-                <div>
-                    <h2>Course Attendance and Participation Passport</h2>
-                    <p class="meta">Student: <strong>${passport.studentName}</strong> | Course: <strong>${passport.course}</strong> | Teacher: <strong>${passport.teacher}</strong></p>
-                </div>
-                <img src="MWCSS_Logo.png" class="pdf-logo" onerror="this.style.display='none'">
-            </div>
-            <div class="passport-block" style="border:none;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th style="width: 8%;">Unit</th>
-                            <th style="width: 17%;">Status</th>
-                            <th style="width: 45%;">Attendance & Participation Reflection</th>
-                            <th style="width: 30%;">Teacher Feedback</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-        `;
-
-        passport.units.forEach(u => {
-            const status = getPassportStatusLabel(u);
-            let classStatus = '';
-            if (u.approved) classStatus = 'status-approved';
-            else if (u.needsRevision) classStatus = 'status-revision';
-            else if (u.reflection) classStatus = 'status-pending';
-
-            html += `
+    function unitsTableHtml(units, notesHeading) {
+        const rows = units.map(u => {
+            const statusClass = { approved: 'status-approved', revision: 'status-revision', pending: 'status-pending', empty: '' }[unitStatus(u)];
+            return `
                 <tr>
                     <td>Unit ${u.unitNum}</td>
-                    <td class="${classStatus}">${status}</td>
-                    <td>${u.reflection || '-'}</td>
-                    <td>${u.feedback || '-'}</td>
-                </tr>
-            `;
-        });
+                    <td class="${statusClass}">${getPassportStatusLabel(u)}</td>
+                    <td>${esc(u.reflection) || '-'}</td>
+                    <td>${esc(u.feedback) || '-'}</td>
+                </tr>`;
+        }).join('');
 
-        html += `</tbody></table></div>`;
-
-        generatePrintWindow(`Passport_${passport.studentName}`, html);
+        return `
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 8%;">Unit</th>
+                        <th style="width: 17%;">Status</th>
+                        <th style="width: 45%;">Attendance & Participation Reflection</th>
+                        <th style="width: 30%;">${notesHeading}</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>`;
     }
 
-    // MODAL UTILITIES
+    const LOGO_URL = `${location.origin}/MWCSS_Logo.png`;
+
+    async function exportPassportsPDF(courseFilter = 'ALL') {
+        const win = openPrintWindow();
+        if (!win) return;
+        try {
+            const passports = await api('GET', `/api/passports?course=${encodeURIComponent(courseFilter)}`);
+            if (passports.length === 0) {
+                win.close();
+                return alert('No passport records found to export.');
+            }
+
+            let html = `
+                <div class="pdf-header">
+                    <div>
+                        <h2>Course Attendance and Participation Passport Summary Report</h2>
+                        <p class="meta">Generated: ${new Date().toLocaleDateString()} | Total Passports: ${passports.length}</p>
+                    </div>
+                    <img src="${LOGO_URL}" class="pdf-logo" onerror="this.style.display='none'">
+                </div>`;
+
+            passports.forEach(p => {
+                html += `
+                    <div class="passport-block">
+                        <h3>Student: ${esc(p.studentName)}</h3>
+                        <div class="meta">Course: <strong>${esc(p.course)}</strong> | Teacher: <strong>${esc(p.teacher)}</strong></div>
+                        ${unitsTableHtml(p.units, 'Teacher Notes')}
+                    </div>`;
+            });
+
+            writePrintWindow(win, `Passports_${courseFilter}`, html);
+        } catch (err) {
+            win.close();
+            throw err;
+        }
+    }
+
+    async function exportSinglePassportPDF(passportId) {
+        const win = openPrintWindow();
+        if (!win) return;
+        try {
+            const passport = await api('GET', `/api/passports/${passportId}`);
+            const html = `
+                <div class="pdf-header">
+                    <div>
+                        <h2>Course Attendance and Participation Passport</h2>
+                        <p class="meta">Student: <strong>${esc(passport.studentName)}</strong> | Course: <strong>${esc(passport.course)}</strong> | Teacher: <strong>${esc(passport.teacher)}</strong></p>
+                    </div>
+                    <img src="${LOGO_URL}" class="pdf-logo" onerror="this.style.display='none'">
+                </div>
+                <div class="passport-block" style="border:none;">
+                    ${unitsTableHtml(passport.units, 'Teacher Feedback')}
+                </div>`;
+            writePrintWindow(win, `Passport_${passport.studentName}`, html);
+        } catch (err) {
+            win.close();
+            throw err;
+        }
+    }
+
+    // ---------- MODAL UTILITIES ----------
     function openModal(id) { document.getElementById(id).style.display = 'flex'; }
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    // ---------- STARTUP ----------
+    ['username', 'password'].forEach(id => {
+        document.getElementById(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+    });
+
+    // Stay logged in after a page refresh
+    (async () => {
+        try {
+            const { user } = await api('GET', '/api/me');
+            currentUser = user;
+            await showDashboard();
+        } catch (_) {
+            /* not logged in - show the login screen */
+        }
+    })();
 </script>
 
 </body>
